@@ -1,6 +1,14 @@
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow as tf
 import numpy as np
 import numpy.random as rnd
+import os
+import sys
+from itertools import chain
 
 # To plot pretty figures
 import matplotlib
@@ -10,6 +18,24 @@ plt.rcParams['xtick.labelsize'] = 12
 plt.rcParams['ytick.labelsize'] = 12
 
 from IPython.display import clear_output, Image, display, HTML
+
+
+def flatten_numpy_array_to_list(np_array):
+    return list(chain.from_iterable(np_array))
+
+def maybe_download(url, filename, expected_bytes):
+  """Download a file if not present, and make sure it's the right size."""
+  download_file = '../../data/'+filename
+  if not os.path.exists(download_file):
+    filename, _ = urllib.request.urlretrieve(url + filename, download_file)
+  statinfo = os.stat(download_file)
+  if statinfo.st_size == expected_bytes:
+    print('Found and verified', download_file)
+  else:
+    print(statinfo.st_size)
+    raise Exception(
+        'Failed to verify ' + download_file + '. Can you get to it with a browser?')
+  return os.path.abspath(download_file)
 
 def strip_consts(graph_def, max_const_size=32):
     """Strip large constant values from graph_def."""
@@ -31,7 +57,7 @@ def save_fig(fig_id, tight_layout=True):
         plt.tight_layout()
     plt.savefig(path, format='png', dpi=300)
 
-    def show_graph(graph_def, max_const_size=32):
+def show_graph(graph_def, max_const_size=32):
     """Visualize TensorFlow graph."""
     if hasattr(graph_def, 'as_graph_def'):
         graph_def = graph_def.as_graph_def()
