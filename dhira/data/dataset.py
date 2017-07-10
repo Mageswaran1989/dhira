@@ -2,7 +2,9 @@ import codecs
 import itertools
 import logging
 
+import os
 from tqdm import tqdm
+import pickle
 
 from .features.feature import Feature
 
@@ -30,6 +32,7 @@ class Dataset:
                              "of features, but the first element "
                              "of the input list was {} of type "
                              "{}".format(features[0], type(features[0])))
+
         self.features = features
 
     def merge(self, other):
@@ -100,11 +103,11 @@ class TextDataset(Dataset):
         return IndexedDataset(indexed_features)
 
     @staticmethod
-    def read_from_file(filenames, feature_class):
+    def read_from_file(file_names, feature_class):
         """
         Read a dataset (basically a list of features) from
         a data file.
-        :param filenames: str or List of str
+        :param file_names: str or List of str
                  The string filename from which to read the features, or a List of
             strings repesenting the files to pull features from. If a string
             is passed in, it is automatically converted to a single-element
@@ -114,17 +117,18 @@ class TextDataset(Dataset):
         :return: text_dataset: TextDataset
             A new TextDataset with the features read from the file.
         """
-        if isinstance(filenames, str):
-            filenames = [filenames]
-        # If filenames is not a list, throw an error. If it is a list,
+
+        if isinstance(file_names, str):
+            file_names = [file_names]
+        # If file_names is not a list, throw an error. If it is a list,
         # but the first element isn't a string, also throw an error.
-        if not isinstance(filenames, list) or not isinstance(filenames[0],
+        if not isinstance(file_names, list) or not isinstance(file_names[0],
                                                              str):
             raise ValueError("Expected filename to be a List of strings "
                              "but was {} of type "
-                             "{}".format(filenames, type(filenames)))
-        logger.info("Reading files {} to a list of lines.".format(filenames))
-        lines = [x.strip() for filename in filenames
+                             "{}".format(file_names, type(file_names)))
+        logger.info("Reading files {} to a list of lines.".format(file_names))
+        lines = [x.strip() for filename in file_names
                  for x in tqdm(codecs.open(filename,
                                            "r", "utf-8").readlines())]
         return TextDataset.read_from_lines(lines, feature_class)

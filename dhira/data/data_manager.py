@@ -1,9 +1,12 @@
 import logging
 import numpy as np
+import os
+import errno
+import pickle
 from itertools import islice
 
 from .data_indexer import DataIndexer
-from .dataset import TextDataset
+from .dataset import TextDataset, IndexedDataset
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,51 @@ class DataManager():
         self.feature_type = feature_type
         self.data_indexer_fitted = False
         self.training_data_max_lengths = {}
+        self.pickle_directory = 'dhira_pickle_folder'
+
+    def set_pickle_folder(self, directory='dhira_pickle_dir'):
+        """
+        Set a folder to pickle(Serialize) python objects for faster reloading 
+        :param folder_name: Folder name, preferably the dataset name
+        :return: 
+        """
+        self.pickle_directory = directory
+        try:
+            os.makedirs(directory)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+
+    def check_pickle_exists(self, pickle_file):
+        """
+        Check whether the pickle file exists before loading
+        :param pickle_file Pickle file to be checked
+        :return: 'True' if exists or otherwise
+        """
+        return os.path.exists(self.pickle_directory + '/' + pickle_file)
+
+    def write_pickle(self, python_object, file_name):
+        """
+        Pickles the processed features for faster loading
+        :param file_name: File Name to store the pickle objects
+        :return: Path of the file created
+        """
+        file = self.pickle_directory + '/' + file_name
+        if (os.path.exists(file)):
+            input('Found existing files!!! Press Enter to Continue...')
+
+        file_handler = open(file, 'wb')
+        pickle.dump(python_object, file_handler)
+
+    def read_pickle(self, file_name):
+        """
+        Reads the pickled file and returns the python object
+        :param file_name: File Name to read the pickle objects
+        :return: Python object
+        """
+        file = self.pickle_directory + '/' + file_name
+        file_handler = open(file, 'rb')
+        return pickle.load(file_handler)
 
     @staticmethod
     def get_batch_generator(get_feature_generator, batch_size):
@@ -118,28 +166,42 @@ class DataManager():
                              "this DataManager, so you cannnot do it again. "
                              "If you want to train on multiple datasets, pass "
                              "in a list of files.")
-        logger.info("Getting training data from {}".format(filenames))
-        training_dataset = TextDataset.read_from_file(filenames,
-                                                      self.feature_type)
-        if max_features:
-            logger.info("Truncating the training dataset "
-                        "to {} features".format(max_features))
-            training_dataset = training_dataset.truncate(max_features)
+        train_file_pickle = 'train_data.p'
+        data_indexer_pickle = 'data_indexer.p'
 
-        training_dataset_size = len(training_dataset.features)
+        if(not (self.check_pickle_exists(train_file_pickle) & self.check_pickle_exists(data_indexer_pickle))):
+            logger.info("Processing the train data file for first time")
+            logger.info("Getting training data from {}".format(filenames))
 
-        # Since this is data for training, we fit the data indexer
-        logger.info("Fitting data indexer word "
-                    "dictionary, min_count is {}.".format(min_count))
-        self.data_indexer.fit_word_dictionary(training_dataset,
-                                              min_count=min_count)
-        self.data_indexer_fitted = True
+            training_dataset = TextDataset.read_from_file(filenames,
+                                                          self.feature_type)
+            if max_features:
+                logger.info("Truncating the training dataset "
+                            "to {} features".format(max_features))
+                training_dataset = training_dataset.truncate(max_features)
 
-        # With our fitted data indexer, we convert the dataset
-        # from string tokens to numeric int indices.
-        logger.info("Indexing dataset")
-        indexed_training_dataset = training_dataset.to_indexed_dataset(
-            self.data_indexer)
+            # Since this is data for training, we fit the data indexer
+            logger.info("Fitting data indexer word "
+                        "dictionary, min_count is {}.".format(min_count))
+            self.data_indexer.fit_word_dictionary(training_dataset,
+                                                  min_count=min_count)
+            self.data_indexer_fitted = True
+
+            # With our fitted data indexer, we convert the dataset
+            # from string tokens to numeric int indices.
+            logger.info("Indexing dataset")
+            indexed_training_dataset = training_dataset.to_indexed_dataset(
+                self.data_indexer)
+
+            self.write_pickle(indexed_training_dataset, train_file_pickle)
+            self.write_pickle(self.data_indexer, data_indexer_pickle)
+        else:
+            logger.info("Reusing the pickle file {}.".format(train_file_pickle))
+            indexed_training_dataset = self.read_pickle(train_file_pickle)
+            self.data_indexer = self.read_pickle(data_indexer_pickle)
+            self.data_indexer_fitted = True
+
+        training_dataset_size = len(indexed_training_dataset.features)
 
         # We now need to check if the user specified max_lengths for
         # the feature, and accordingly truncate or pad if applicable. If
@@ -237,21 +299,31 @@ class DataManager():
             progress bar.
         """
         logger.info("Getting validation data from {}".format(filenames))
-        validation_dataset = TextDataset.read_from_file(filenames,
-                                                        self.feature_type)
-        if max_features:
-            logger.info("Truncating the validation dataset "
-                        "to {} features".format(max_features))
-            validation_dataset = validation_dataset.truncate(max_features)
 
-        validation_dataset_size = len(validation_dataset.features)
+        pickle_validation_file = 'validation_data.p'
 
-        # With our fitted data indexer, we we convert the dataset
-        # from string tokens to numeric int indices.
-        logger.info("Indexing validation dataset with "
-                    "DataIndexer fit on train data.")
-        indexed_validation_dataset = validation_dataset.to_indexed_dataset(
-            self.data_indexer)
+        if (not self.check_pickle_exists(pickle_validation_file)):
+            logger.info("Processing the validation data file for first time")
+
+            validation_dataset = TextDataset.read_from_file(filenames,
+                                                            self.feature_type)
+            if max_features:
+                logger.info("Truncating the validation dataset "
+                            "to {} features".format(max_features))
+                validation_dataset = validation_dataset.truncate(max_features)
+
+            # With our fitted data indexer, we we convert the dataset
+            # from string tokens to numeric int indices.
+            logger.info("Indexing validation dataset with "
+                        "DataIndexer fit on train data.")
+            indexed_validation_dataset = validation_dataset.to_indexed_dataset(
+                self.data_indexer)
+            self.write_pickle(indexed_validation_dataset, pickle_validation_file)
+        else:
+            logger.info("Reusing the pickle file {}.".format(pickle_validation_file))
+            indexed_validation_dataset = self.read_pickle(pickle_validation_file)
+
+        validation_dataset_size = len(indexed_validation_dataset.features)
 
         # We now need to check if the user specified max_lengths for
         # the feature, and accordingly truncate or pad if applicable. If
@@ -349,21 +421,32 @@ class DataManager():
             progress bar.
         """
         logger.info("Getting test data from {}".format(filenames))
-        test_dataset = TextDataset.read_from_file(filenames,
-                                                  self.feature_type)
-        if max_features:
-            logger.info("Truncating the test dataset "
-                        "to {} features".format(max_features))
-            test_dataset = test_dataset.truncate(max_features)
+        
+        pickle_test_file = 'test_data.p'
 
-        test_dataset_size = len(test_dataset.features)
+        if (not self.check_pickle_exists(pickle_test_file)):
+            logger.info("Processing the train data file for first time")
+            
+            test_dataset = TextDataset.read_from_file(filenames,
+                                                      self.feature_type)
+            if max_features:
+                logger.info("Truncating the test dataset "
+                            "to {} features".format(max_features))
+                test_dataset = test_dataset.truncate(max_features)
 
-        # With our fitted data indexer, we we convert the dataset
-        # from string tokens to numeric int indices.
-        logger.info("Indexing test dataset with DataIndexer "
-                    "fit on train data.")
-        indexed_test_dataset = test_dataset.to_indexed_dataset(
-            self.data_indexer)
+            # With our fitted data indexer, we we convert the dataset
+            # from string tokens to numeric int indices.
+            logger.info("Indexing test dataset with DataIndexer "
+                        "fit on train data.")
+            indexed_test_dataset = test_dataset.to_indexed_dataset(
+                self.data_indexer)
+            self.write_pickle(indexed_test_dataset, pickle_test_file)
+
+        else:
+            logger.info("Reusing the pickle file {}.".format(pickle_test_file))
+            indexed_test_dataset = self.read_pickle(pickle_test_file)
+
+        test_dataset_size = len(indexed_test_dataset.features)
 
         # We now need to check if the user specified max_lengths for
         # the feature, and accordingly truncate or pad if applicable. If

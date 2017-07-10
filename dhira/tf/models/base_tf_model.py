@@ -65,10 +65,11 @@ class BaseTFModel:
         :param seed: int, optional (default=0)
              The graph-level seed to use when building the graph.
         """
-        logger.info("Building graph...")
-        tf.set_random_seed(seed)
-        self._create_placeholders()
-        self._build_forward()
+        with tf.device("/gpu:0"):
+            logger.info("Building graph...")
+            tf.set_random_seed(seed)
+            self._create_placeholders()
+            self._build_forward()
 
     def _get_train_feed_dict(self, batch):
         """
@@ -157,20 +158,6 @@ class BaseTFModel:
 
         print("Writing to {}\n".format(self._log_dir))
 
-        if (self.gradient_and_variance):
-            with tf.name_scope('gradients'):
-                for g, v in self.gradient_and_variance:
-                    if g is not None:
-                        grad_hist_summary = tf.summary.histogram("{}/grad/hist".format(v.name.replace(':', '_')), g)
-                        grad_scalar_summary = tf.summary.scalar("{}/grad/scalar".format(v.name.replace(':', '_')),
-                                                                tf.nn.zero_fraction(g))
-                        self._train_summaries.append(grad_hist_summary)
-                        self._train_summaries.append(grad_scalar_summary)
-
-        # Now log the summaries for current model
-        # self._train_summary_op = tf.summary.merge(self._train_summaries)
-        # self._val_summary_op = tf.summary.merge(self._val_summaries)
-
         train_summary_dir = os.path.join(self._log_dir, "summaries", "train")
         self._train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
@@ -185,15 +172,8 @@ class BaseTFModel:
             os.makedirs(self.checkpoint_dir)
         self._saver = tf.train.Saver(max_to_keep=1000)  # Save model after each epoch
 
-        # # Get the embedding matrix if any from the models
-        # # Use the same LOG_DIR where you stored your checkpoint.
-        # embedding_writer = tf.summary.FileWriter(self.checkpoint_dir)
-        # for model in self.models:
-        #     for config, embedding, meta_file_name in model._config_embeddings_filename_tuple:
-        #         path = os.path.join(self.checkpoint_dir, meta_file_name)
-        #         Tokenizer.word_count_to_tsv(tsv_file_path=path)  # TODO decouple this one
-        #         embedding.metadata_path = path
-        #         projector.visualize_embeddings(embedding_writer, config)
+        self.train_summary_op = tf.summary.merge(self._train_summaries)
+        self.val_summary_op = tf.summary.merge(self._val_summaries)
 
         print("--------------------------------------------------")
         print("\ntensorboard --logdir  {}\n".format(self._log_dir))
@@ -259,7 +239,7 @@ class BaseTFModel:
         init_op = tf.global_variables_initializer()
 
         gpu_options = tf.GPUOptions(allow_growth=True)
-        sess_config = tf.ConfigProto(gpu_options=gpu_options)
+        sess_config = tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True, log_device_placement=True)
         with tf.Session(config=sess_config) as sess:
             sess.run(init_op)
             
@@ -286,7 +266,7 @@ class BaseTFModel:
                     if global_step % log_period == 0:
                         # Record summary with gradient update
                         train_loss, _, train_summary = sess.run(
-                            [self.loss, self.training_op, self.summary_op],
+                            [self.loss, self.training_op, self.train_summary_op],
                             feed_dict=feed_dict)
                         self._train_summary_writer.add_summary(train_summary, global_step)
                     else:

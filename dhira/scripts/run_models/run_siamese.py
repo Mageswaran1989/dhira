@@ -164,6 +164,7 @@ def main():
     if mode == "train":
         # Read the train data from a file, and use it to index the validation data
         data_manager = DataManager(PairFeature)
+        data_manager.set_pickle_folder("data/quora/pickled")
         num_sentence_words = config.num_sentence_words
         get_train_data_gen, train_data_size = data_manager.get_train_data_from_file(
             [config.train_file],
@@ -225,6 +226,8 @@ def main():
         logger.info("Saving fitted DataManager to {}".format(save_dir))
         data_manager_pickle_name = "{}-{}-DataManager.pkl".format(model_name,
                                                                   run_id.zfill(2))
+
+        print(data_manager_pickle_name)
         pickle.dump(data_manager,
                     open(os.path.join(save_dir, data_manager_pickle_name), "wb"))
 

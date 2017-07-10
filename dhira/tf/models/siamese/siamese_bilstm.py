@@ -134,7 +134,7 @@ class SiameseBiLSTM(BaseTFModel):
         word_embedding_matrix = self.word_embedding_matrix
         fine_tune_embeddings = self.fine_tune_embeddings
 
-        with tf.variable_scope("embeddings"):
+        with tf.variable_scope("embeddings"), tf.device('/cpu:0'):
             with tf.variable_scope("embedding_var"), tf.device("/cpu:0"):
                 if self.mode == "train":
                     # Load the word embedding matrix that was passed in
@@ -283,14 +283,17 @@ class SiameseBiLSTM(BaseTFModel):
             optimizer = tf.train.AdamOptimizer()
             with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
                 self.gradient_and_variance = optimizer.compute_gradients(self.loss)
-                self.train_op = optimizer.apply_gradients(self.gradient_and_variance,
+                self.training_op = optimizer.apply_gradients(self.gradient_and_variance,
                                                                global_step=self.global_step)
 
-        with tf.name_scope("train_summaries"):
+        # with tf.name_scope("train_summaries"):
             # Add the loss and the accuracy to the tensorboard summary
-            tf.summary.scalar("loss", self.loss)
-            tf.summary.scalar("accuracy", self.accuracy)
-            self.summary_op = tf.summary.merge_all()
+            # tf.summary.scalar("loss", self.loss)
+            # tf.summary.scalar("accuracy", self.accuracy)
+            # self.summary_op = tf.summary.merge_all()
+
+        self.add_scalar_summary(self.loss)
+        self.add_scalar_summary(self.accuracy)
 
     @overrides
     def _get_train_feed_dict(self, batch):

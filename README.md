@@ -3,9 +3,18 @@
 
 ### [Awesome DeepLearning](https://github.com/ChristosChristofidis/awesome-deep-learning)
 
-### Scala Version of http://www.geeksforgeeks.org/ Algorithms
-- [Strings](src/main/scala/jupyter/algorithms/strings)
-
 
 https://github.com/jtoy/awesome-tensorflow
+
+
+### How to run?
+$ cd dhira/
+$ python dhira/scripts/run_models/run_siamese.py train --share_encoder_weights --model_name=baseline_siamese --run_id=0
+
+
+Reference:  
+- https://github.com/nelson-liu/paraphrase-id-tensorflow
+
+
+
 
