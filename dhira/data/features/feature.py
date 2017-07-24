@@ -50,9 +50,9 @@ class TextFeature(Feature):
     """
     def __init__(self, label=None, tokenizer=None):
         if not tokenizer:
-            self.tokenizer = Tokenizer()
+            self.tokenizer: Tokenizer = Tokenizer()
         else:
-            self.tokenizer = tokenizer()
+            self.tokenizer: Tokenizer = tokenizer()
         super(TextFeature, self).__init__(label)
 
     def _words_from_text(self, text):

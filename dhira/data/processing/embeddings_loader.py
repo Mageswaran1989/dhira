@@ -81,7 +81,7 @@ class DefaultEmbeddingLoader(EmbeddingFactory):
         EmbeddingFactory.__init__(self, word_vec_file_path, embeddings_save_path, word_index)
 
     def pickle_embeddings(self, pickle_path="embedding_matrix.p"):
-        print('Reading word2vec/glove vectors from : ', self.word2vec_path)
+        print('Reading word2vec/word2vec vectors from : ', self.word2vec_path)
         f = open(self.word2vec_path)
 
         embeddings_index = {}

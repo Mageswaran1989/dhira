@@ -57,6 +57,9 @@ class BaseTFModel:
     def _build_forward(self):
         raise NotImplementedError
 
+    def _evaluate_model_parameters(self, session):
+        raise NotImplementedError
+
     def build_graph(self, seed=0):
         """
         Build the graph, ostensibly by setting up the placeholders and then
@@ -258,7 +261,10 @@ class BaseTFModel:
                                         leave=False):
                     global_step = sess.run(self.global_step) + 1
 
-                    inputs, targets = train_batch
+                    # inputs, targets = train_batch
+                    if (len(train_batch) != batch_size):
+                        continue
+
                     feed_dict = self._get_train_feed_dict(train_batch)
 
                     # Do a gradient update, and log results to Tensorboard
@@ -315,6 +321,9 @@ class BaseTFModel:
                                                 patience,
                                                 val_loss))
                     break
+
+            #Evaluate model specific evaluations
+            self._evaluate_model_parameters(sess)
 
         # Done training!
         logger.info("Finished {} epochs!".format(epoch + 1))
@@ -385,6 +394,10 @@ class BaseTFModel:
                               total=num_val_steps,
                               desc="Validation Batches Completed",
                               leave=False):
+
+            #Ignore the last batch if the size doesn't match
+            if(len(val_batch) != batch_size):
+                continue
             feed_dict = self._get_validation_feed_dict(val_batch)
             val_batch_acc, val_batch_loss = session.run(
                 [self.accuracy, self.loss],

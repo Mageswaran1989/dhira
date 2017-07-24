@@ -14,7 +14,7 @@ from dhira.data.data_manager import DataManager
 from dhira.data.embedding_manager import EmbeddingManager
 from dhira.data.features.pair_feature import PairFeature
 from dhira.tf.models.siamese.siamese_bilstm import SiameseBiLSTM
-
+from dhira.data.text_dataset import IndexedDataset
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +60,7 @@ def main():
                            help="Path to a file with pretrained embeddings.",
                            default=os.path.join(project_dir,
                                                 "../data/quora/external/",
-                                                "glove.6B.300d.txt"))
+                                                "glove.6B.300d.txt"))#"word2vec.6B.300d.txt"))
 
     argparser.add_argument("--log_dir", type=str,
                            default=os.path.join(project_dir,
@@ -159,27 +159,13 @@ def main():
     run_id = config.run_id
     mode = config.mode
 
-    # Get the data.
-    batch_size = config.batch_size
-    if mode == "train":
-        # Read the train data from a file, and use it to index the validation data
-        data_manager = DataManager(PairFeature)
-        data_manager.set_pickle_folder("data/quora/pickled")
-        num_sentence_words = config.num_sentence_words
-        get_train_data_gen, train_data_size = data_manager.get_train_data_from_file(
-            [config.train_file],
-            max_lengths={"num_sentence_words": num_sentence_words})
-        get_val_data_gen, val_data_size = data_manager.get_validation_data_from_file(
-            [config.val_file], max_lengths={"num_sentence_words": num_sentence_words})
-    else:
-        # Load the fitted DataManager, and use it to index the test data
-        logger.info("Loading pickled DataManager "
-                    "from {}".format(config.dataindexer_load_path))
-        data_manager = pickle.load(open(config.dataindexer_load_path, "rb"))
-        test_data_gen, test_data_size = data_manager.get_test_data_from_file(
-            [config.test_file])
+    save_period = config.save_period
+    save_dir = os.path.join(config.save_dir, model_name, run_id.zfill(2) + "/")
+    save_path = os.path.join(save_dir, model_name + "-" + run_id.zfill(2))
 
-    vars(config)["word_vocab_size"] = data_manager.data_indexer.get_vocab_size()
+    logger.info("Saving fitted DataManager to {}".format(save_dir))
+    data_manager_pickle_name = "{}-{}-DataManager.pkl".format(model_name,
+                                                              run_id.zfill(2))
 
     # Log the run parameters.
     log_dir = config.log_dir
@@ -194,8 +180,36 @@ def main():
     with open(params_path, 'w') as params_file:
         json.dump(vars(config), params_file, indent=4)
 
+    quora_dataset = IndexedDataset(name='quora',
+                                   train_files=config.train_file,
+                                   val_files=config.val_file,
+                                   feature_type=PairFeature,
+                                   pad=True,
+                                   pickle_dir=save_dir,
+                                   max_lengths={"num_sentence_words": config.num_sentence_words})
+    # Get the data.
+    batch_size = config.batch_size
+    if mode == "train":
+
+        data_manager = DataManager(dataset=quora_dataset)
+
+        get_train_data_gen, train_data_size = data_manager.get_train_data_from_file()
+
+        get_val_data_gen, val_data_size = data_manager.get_validation_data_from_file()
+
+        print(data_manager_pickle_name)
+    else:
+        # Load the fitted DataManager, and use it to index the test data
+        logger.info("Loading pickled DataManager "
+                    "from {}".format(config.dataindexer_load_path))
+        data_manager = pickle.load(open(config.dataindexer_load_path, "rb"))
+        test_data_gen, test_data_size = data_manager.get_test_data_from_file(
+            [config.test_file])
+
+    vars(config)["word_vocab_size"] = data_manager.data_indexer.get_vocab_size()
+
     # Get the embeddings.
-    embedding_manager = EmbeddingManager(data_manager.data_indexer)
+    embedding_manager = EmbeddingManager(quora_dataset.data_indexer)
     embedding_matrix = embedding_manager.get_embedding_matrix(
         config.word_embedding_dim,
         config.pretrained_embeddings_file_path)
@@ -213,21 +227,12 @@ def main():
         log_period = config.log_period
         val_period = config.val_period
 
-        save_period = config.save_period
-        save_dir = os.path.join(config.save_dir, model_name, run_id.zfill(2) + "/")
-        save_path = os.path.join(save_dir, model_name + "-" + run_id.zfill(2))
-
         logger.info("Checkpoints will be written to {}".format(save_dir))
         if not os.path.exists(save_dir):
             logger.info("save path {} does not exist, "
                         "creating it".format(save_dir))
             os.makedirs(save_dir)
 
-        logger.info("Saving fitted DataManager to {}".format(save_dir))
-        data_manager_pickle_name = "{}-{}-DataManager.pkl".format(model_name,
-                                                                  run_id.zfill(2))
-
-        print(data_manager_pickle_name)
         pickle.dump(data_manager,
                     open(os.path.join(save_dir, data_manager_pickle_name), "wb"))
 

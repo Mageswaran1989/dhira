@@ -116,6 +116,7 @@ class PairFeature(TextFeature):
             raise RuntimeError("Unrecognized line format: " + line)
         return cls(first_sentence, second_sentence, label)
 
+#--------------------------------------------------------------------------------
 
 class IndexedPairFeature(IndexedFeature):
     """

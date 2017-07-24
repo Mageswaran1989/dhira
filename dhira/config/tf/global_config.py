@@ -47,7 +47,7 @@ class Config:
     FLAGS = tf.app.flags.FLAGS
 
     BASE_DIR = 'data/'
-    EMBEDDING_PATH = BASE_DIR + 'glove.840B.300d.txt'
+    EMBEDDING_PATH = BASE_DIR + 'word2vec.840B.300d.txt'
     TRAIN_DATA_PATH = BASE_DIR + 'train.csv'
     TEST_DATA_PATH = BASE_DIR + 'test.csv'
     VOCAB_SIZE = 200000

@@ -24,9 +24,8 @@ class DataIndexer:
         self._padding_token = "@@PADDING@@"
         self._oov_token = "@@UNKOWN@@"
         self.word_indices = defaultdict(self._default_namespace_word_indices_dict)
+        self.reverse_word_indices = defaultdict(self._default_namespace_reverse_word_indices_dict)
         self.is_fit = False
-        self.reverse_word_indices = defaultdict(
-            self._default_namespace_reverse_word_indices_dict)
 
     def _default_namespace_word_indices_dict(self):
         return {self._padding_token: 0, self._oov_token: 1}
@@ -64,7 +63,7 @@ class DataIndexer:
         logger.info("Fitting word dictionary with min count of %d", min_count)
         namespace_word_counts = defaultdict(Counter)
         for instance in tqdm.tqdm(dataset.features):
-            # dictionary with keys as namespace names, and values asarray
+            # dictionary with keys as namespace names, and values as array
             # the words for that namespace.
             namespace_dict = instance.words()
             for namespace in namespace_dict:

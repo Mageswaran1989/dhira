@@ -1,39 +1,53 @@
+import logging
+from dhira.data.features.feature import Feature
+from tqdm import tqdm
 import codecs
 import itertools
-import logging
-
-import os
-from tqdm import tqdm
-import pickle
-
-from .features.feature import Feature
-
+from dhira.data.utils.pickle_data import PickleData
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+from sklearn import datasets
 
-class Dataset:
+class Dataset(PickleData):
     """
     A collection of Features. This base class has general methods that apply
     to all collections of Features. That basically is just methods that
     operate on sets, like merging and truncating.
     """
 
-    def __init__(self, features):
+    def __init__(self,
+                 name='default',
+                 feature_type = None,
+                 train_files = None,
+                 test_files = None,
+                 val_files = None,
+                 train_features = None,
+                 val_features=None,
+                 test_features=None,
+                 pickle_dir = None):
         """
-        Construct a dataset from a List of Features.
-
-        :param features: List of Features to build Dataset from.
+        Initializes the Dataset with the feature type to be read and the required files
+        :param feature_type: Sub class of `Feature` type
+        :param train_file: 
+        :param test_file: 
+        :param val_file: 
         """
-        if not isinstance(features, list):
-            raise ValueError("Expected features to be type "
-                             "List, found {} of type "
-                             "{}".format(features, type(features)))
-        if not isinstance(features[0], Feature):
-            raise ValueError("Expected features to be a List "
-                             "of features, but the first element "
-                             "of the input list was {} of type "
-                             "{}".format(features[0], type(features[0])))
+        super(Dataset, self).__init__(pickle_directory=pickle_dir)
+        self.name = name
+        self.feature_type = feature_type
+        self.pickle_dir = pickle_dir
 
-        self.features = features
+        self.train_features = train_features
+        self.val_features = val_features
+        self.test_features = test_features
+        self.train_files = train_files
+        self.test_files = test_files
+        self.val_files = val_files
+
+        self.train_pickle_file = self.pickle_directory + '/' + self.name + '-train.p'
+        self.val_pickle_file = self.pickle_directory + '/' + self.name + '-val.p'
+        self.test_pickle_file = self.pickle_directory + '/' + self.name +  '-test.p'
+
+        super(Dataset, self).__init__(pickle_directory=self.pickle_directory)
 
     def merge(self, other):
         """
@@ -69,41 +83,15 @@ class Dataset:
         if max_features < 1:
             raise ValueError("max_features must be at least 1"
                              ", found {}".format(max_features))
+
         if len(self.features) <= max_features:
             return self
-        new_features = [i for i in self.features]
-        return self.__class__(new_features[:max_features])
 
-#-------------------------------------------------------------------------------------
+        # new_features = [i for i in self.features] TODO: Remove
+        return self.__class__(self.features[:max_features])
 
-class TextDataset(Dataset):
-    """
-    A Dataset of TextFeatures, with a few helper methods. TextFeatures aren't
-    useful for much until they've been indexed. So this class just has methods
-    to read in data from a file and converting it into other kinds of Datasets.
-    """
-    def __init__(self, features):
-        """
-        Construct a new TextDataset
-        :param features: List of TextFeature
-                A list of TextFeatures to construct
-                    the TextDataset from.
-        """
-        super(TextDataset, self).__init__(features)
-
-    def to_indexed_dataset(self, data_indexer):
-        """
-        Converts the Dataset into an IndexedDataset, given a DataIndexer.
-        :param data_indexer: DataIndexer
-                        The DataIndexer to use in converting words to indices.
-        :return: IndexedDataset
-        """
-        indexed_features = [feature.to_indexed_feature(data_indexer) for
-                             feature in tqdm(self.features)]
-        return IndexedDataset(indexed_features)
-
-    @staticmethod
-    def read_from_file(file_names, feature_class):
+    @classmethod
+    def read_from_file(cls, file_names, feature_type):
         """
         Read a dataset (basically a list of features) from
         a data file.
@@ -123,18 +111,17 @@ class TextDataset(Dataset):
         # If file_names is not a list, throw an error. If it is a list,
         # but the first element isn't a string, also throw an error.
         if not isinstance(file_names, list) or not isinstance(file_names[0],
-                                                             str):
+                                                              str):
             raise ValueError("Expected filename to be a List of strings "
                              "but was {} of type "
                              "{}".format(file_names, type(file_names)))
         logger.info("Reading files {} to a list of lines.".format(file_names))
         lines = [x.strip() for filename in file_names
-                 for x in tqdm(codecs.open(filename,
-                                           "r", "utf-8").readlines())]
-        return TextDataset.read_from_lines(lines, feature_class)
+                 for x in tqdm(codecs.open(filename, "r", "utf-8").readlines())]
+        return cls.read_from_lines(lines, feature_type)
 
-    @staticmethod
-    def read_from_lines(lines, feature_class):
+    @classmethod
+    def read_from_lines(cls, lines, feature_type):
         """
         Read a dataset (basically a list of features) from
         a data file.
@@ -150,13 +137,18 @@ class TextDataset(Dataset):
             raise ValueError("Expected lines to be a list, "
                              "but was {} of type "
                              "{}".format(lines, type(lines)))
+
         if not isinstance(lines[0], str):
             raise ValueError("Expected lines to be a list of strings, "
                              "but the first element of the list was {} "
                              "of type {}".format(lines[0], type(lines[0])))
+
         logger.info("Creating list of {} features from "
-                    "list of lines.".format(feature_class))
-        features = [feature_class.read_from_line(line) for line in tqdm(lines)]
+                    "list of lines.".format(feature_type))
+
+        features = [feature_type.read_from_line(line) for line in tqdm(lines)]
+
+        # TODO remove below user info???
         labels = [(x.label, x) for x in features]
         labels.sort(key=lambda x: str(x[0]))
         label_counts = [(label, len([x for x in group]))
@@ -167,113 +159,34 @@ class TextDataset(Dataset):
             label_count_str = label_count_str[:100] + '...'
         logger.info("Finished reading dataset; label counts: %s",
                     label_count_str)
-        return TextDataset(features)
 
-#------------------------------------------------------------------------------
+        return features
 
-class IndexedDataset(Dataset):
-    """
-    A Dataset of IndexedFeatures, with some helper methods.
-    IndexedFeatures have text sequences replaced with lists of word indices,
-    and are thus able to be padded to consistent lengths and converted to
-    training inputs.
-    """
-    def __init__(self, features):
-        super(IndexedDataset, self).__init__(features)
+    # This is a hack to get the function to run the code above immediately,
+    # instead of doing the standard python generator lazy-ish evaluation.
+    # This is necessary to set the class variables ASAP.
+    def get_train_batch_generator(self):
+        for feature in self.train_features:
+            inputs, labels = feature.as_training_data()
+            yield inputs, labels
 
-    def max_lengths(self):
-        """
-        
-        :return: 
-        """
-        max_lengths = {}
-        lengths = [feature.get_lengths() for feature in self.features]
-        if not lengths:
-            return max_lengths
-        for key in lengths[0]:
-            max_lengths[key] = max(x[key] if key in x else 0 for x in lengths)
-        return max_lengths
+    def get_validation_batch_generator(self):
+        for feature in self.val_features:
+            inputs, labels = feature.as_training_data()
+            yield inputs, labels
 
-    def pad_features(self, max_lengths=None):
-        """
-        Make all of the IndexedFeatures in the dataset have the same length
-        by padding them (in the front) with zeros.
-        If max_length is given for a particular dimension, we will pad all
-        features to that length (including left-truncating features if
-        necessary). If not, we will find the longest feature and pad all
-        features to that length. Note that max_lengths is a _List_, not an int
-        - there could be several dimensions on which we need to pad, depending
-        on what kind of feature we are dealing with.
-        This method _modifies_ the current object, it does not return a new
-        IndexedDataset.
-        """
-        # First we need to decide _how much_ to pad. To do that, we find the
-        # max length for all relevant padding decisions from the features
-        # themselves. Then we check whether we were given a max length for a
-        # particular dimension. If we were, we use that instead of the
-        # feature-based one.
-        logger.info("Getting max lengths from features")
-        feature_max_lengths = self.max_lengths()
-        logger.info("Feature max lengths: %s", str(feature_max_lengths))
-        lengths_to_use = {}
-        for key in feature_max_lengths:
-            if max_lengths and max_lengths[key] is not None:
-                lengths_to_use[key] = max_lengths[key]
-            else:
-                lengths_to_use[key] = feature_max_lengths[key]
+    def get_test_batch_generator(self):
+        for feature in self.test_features:
+            inputs, labels = feature.as_training_data()
+            yield inputs, labels
 
-        logger.info("Now actually padding features to length: %s",
-                    str(lengths_to_use))
-        for feature in tqdm(self.features):
-            feature.pad(lengths_to_use)
+    def read_train_data_from_file(self):
+        raise NotImplementedError
 
-    def as_training_data(self, mode="word"):
-        """
-        Takes each IndexedFeature and converts it into (inputs, labels),
-        according to the Feature's as_training_data() method. Note that
-        you might need to call numpy.asarray() on the results of this; we
-        don't do that for you, because the inputs might be complicated.
-        :param mode: str, optional (default="word")
-            String describing whether to return the word-level representations,
-            character-level representations, or both. One of "word",
-            "character", or "word+character"
-        :return: 
-        """
-        inputs = []
-        labels = []
-        features = self.features
-        for feature in features:
-            feature_inputs, label = feature.as_training_data(mode=mode)
-            inputs.append(feature_inputs)
-            labels.append(label)
-        return inputs, labels
+    def read_val_data_from_file(self):
+        raise NotImplementedError
 
-    def as_testing_data(self, mode="word"):
-        """
-        Takes each IndexedFeature and converts it into inputs,
-        according to the Feature's as_testing_data() method. Note that
-        you might need to call numpy.asarray() on the results of this; we
-        don't do that for you, because the inputs might be complicated.
-        :param mode: str, optional (default="word")
-            String describing whether to return the word-level representations,
-            character-level representations, or both. One of "word",
-            "character", or "word+character"
-        :return: 
-        """
-        inputs = []
-        features = self.features
-        for feature in features:
-            feature_inputs, _ = feature.as_testing_data(mode=mode)
-            inputs.append(feature_inputs)
-        return inputs, []
+    def read_test_data_from_file(self):
+        raise NotImplementedError
 
-    def sort(self, reverse=True):
-        """
-        Sorts the list of IndexedFeatures, in either ascending or descending order,
-        if the features are IndexedSTSFeatures
-        :param reverse: boolean, optional (default=True)
-            Boolean which detrmines what reverse parameter is used in the
-            sorting function.
-        :return: 
-        """
-        self.features.sort(reverse=reverse)
+#-------------------------------------------------------------------------------------

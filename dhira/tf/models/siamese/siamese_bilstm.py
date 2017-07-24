@@ -156,6 +156,7 @@ class SiameseBiLSTM(BaseTFModel):
                                                    dtype="float",
                                                    trainable=fine_tune_embeddings)
 
+        with tf.variable_scope("embeddings"), tf.device('/gpu:0'):
             with tf.variable_scope("word_embeddings"):
                 # Shape: (batch_size, num_sentence_words, embedding_dim)
                 word_embedded_sentence_one = tf.nn.embedding_lookup(
@@ -294,6 +295,10 @@ class SiameseBiLSTM(BaseTFModel):
 
         self.add_scalar_summary(self.loss)
         self.add_scalar_summary(self.accuracy)
+
+    @overrides
+    def _evaluate_model_parameters(self, session):
+        logger.info("No model specific evaluations")
 
     @overrides
     def _get_train_feed_dict(self, batch):
