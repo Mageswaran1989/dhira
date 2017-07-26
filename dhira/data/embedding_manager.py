@@ -2,20 +2,23 @@ import logging
 
 import numpy as np
 from tqdm import tqdm
-
+from dhira.data.utils.pickle_data import PickleData
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
-class EmbeddingManager():
+class EmbeddingManager(PickleData):
     """
     An EmbeddingManager takes a DataIndexer fit on a train dataset,
     and produces an embedding matrix with pretrained embedding files.
     """
-    def __init__(self, data_indexer):
+    def __init__(self, data_indexer, pickle_dir=None):
+        super(EmbeddingManager, self).__init__(pickle_directory=pickle_dir)
         if not data_indexer.is_fit:
             raise ValueError("Input DataIndexer to EmbeddingManager "
                              "must first be fit on input data.")
         self.data_indexer = data_indexer
+
+        self.embedding_pickle_file = 'embedding_matrix.p'
 
     @staticmethod
     def initialize_random_matrix(shape, scale=0.05, seed=0):
@@ -69,80 +72,86 @@ class EmbeddingManager():
             (num_indices, embedding_dim) where embedding_matrix[i]
             indicates the word vector for index i in the input DataIndexer.
         """
-        if not isinstance(embedding_dim, int):
-            raise ValueError("Expected input embedding_dim to be of "
-                             "type int, found {} of type {} "
-                             "instead.".format(embedding_dim,
-                                               type(embedding_dim)))
-        if (pretrained_embeddings_file_path and
-                not isinstance(pretrained_embeddings_file_path, str)):
-            raise ValueError("Expected input "
-                             "pretrained_embeddings_file_path "
-                             "to be of type str, found {} of type "
-                             "{}".format(
-                                 pretrained_embeddings_file_path,
-                                 type(pretrained_embeddings_file_path)))
-        if (pretrained_embeddings_dict and
-                not isinstance(pretrained_embeddings_dict, dict)):
-            raise ValueError("Expected input pretrained_embeddings_dict "
-                             "to be of type dict, found {} of type "
-                             "{}".format(
-                                 pretrained_embeddings_dict,
-                                 type(pretrained_embeddings_dict)))
-
-        embeddings_from_file = {}
-        if pretrained_embeddings_file_path:
-            logger.info("Reading pretrained "
-                        "embeddings from {}".format(
-                            pretrained_embeddings_file_path))
-            with open(pretrained_embeddings_file_path) as embedding_file:
-                for line in tqdm(embedding_file):
-                    fields = line.strip().split(" ")
-                    if len(fields) - 1 <= 1:
-                        raise ValueError("Found embedding size of 1; "
-                                         "do you have a header?")
-                    if embedding_dim != len(fields) - 1:
-                        raise ValueError("Provided embedding_dim of {}, but "
-                                         "file at pretrained_embeddings_"
-                                         "file_path has embeddings of "
-                                         "size {}".format(embedding_dim,
-                                                          len(fields) - 1))
-                    word = fields[0]
-                    vector = np.array(fields[1:], dtype='float32')
-                    embeddings_from_file[word] = vector
-
-        if pretrained_embeddings_dict:
-            # Check the all the values in the dictionary have the same
-            # length, and check that that length is the same as
-            # embedding_dim
-            embeddings_dict_dim = 0
-            for word, vector in pretrained_embeddings_dict.items():
-                if not embeddings_dict_dim:
-                    embeddings_dict_dim = len(vector)
-                if embeddings_dict_dim != len(vector):
-                    raise ValueError("Found vectors of different lengths in "
-                                     "the pretrained_embeddings_dict.")
-            if embeddings_dict_dim != embedding_dim:
-                raise ValueError("Provided embedding_dim of {}, but "
-                                 "pretrained_embeddings_dict has embeddings "
-                                 "of size {}".format(embedding_dim,
-                                                     embeddings_dict_dim))
-
-        vocab_size = self.data_indexer.get_vocab_size(namespace=namespace)
-        # Build the embedding matrix
-        embedding_matrix = self.initialize_random_matrix((vocab_size,
-                                                          embedding_dim))
-        # The 2 here because there is no point in setting vectors
-        # for 0 (padding token) and 1 (OOV token)
-        for i in range(2, vocab_size):
-            # Get the word corresponding to the index
-            word = self.data_indexer.get_word_from_index(i)
-            # If we don't have a pre-trained vector for this word, just
-            # leave this row alone so the word has a random initialization.
+        if not self.check_pickle_exists(self.embedding_pickle_file) :
+            if not isinstance(embedding_dim, int):
+                raise ValueError("Expected input embedding_dim to be of "
+                                 "type int, found {} of type {} "
+                                 "instead.".format(embedding_dim,
+                                                   type(embedding_dim)))
+            if (pretrained_embeddings_file_path and
+                    not isinstance(pretrained_embeddings_file_path, str)):
+                raise ValueError("Expected input "
+                                 "pretrained_embeddings_file_path "
+                                 "to be of type str, found {} of type "
+                                 "{}".format(
+                                     pretrained_embeddings_file_path,
+                                     type(pretrained_embeddings_file_path)))
             if (pretrained_embeddings_dict and
-                    word in pretrained_embeddings_dict):
-                embedding_matrix[i] = pretrained_embeddings_dict[word]
-            else:
-                if embeddings_from_file and word in embeddings_from_file:
-                    embedding_matrix[i] = embeddings_from_file[word]
+                    not isinstance(pretrained_embeddings_dict, dict)):
+                raise ValueError("Expected input pretrained_embeddings_dict "
+                                 "to be of type dict, found {} of type "
+                                 "{}".format(
+                                     pretrained_embeddings_dict,
+                                     type(pretrained_embeddings_dict)))
+
+            embeddings_from_file = {}
+            if pretrained_embeddings_file_path:
+                logger.info("Reading pretrained embeddings from {}".format(
+                                pretrained_embeddings_file_path))
+                with open(pretrained_embeddings_file_path) as embedding_file:
+                    for line in tqdm(embedding_file):
+                        fields = line.strip().split(" ")
+                        if len(fields) - 1 <= 1:
+                            raise ValueError("Found embedding size of 1; "
+                                             "do you have a header?")
+                        if embedding_dim != len(fields) - 1:
+                            raise ValueError("Provided embedding_dim of {}, but "
+                                             "file at pretrained_embeddings_"
+                                             "file_path has embeddings of "
+                                             "size {}".format(embedding_dim,
+                                                              len(fields) - 1))
+                        word = fields[0]
+                        vector = np.array(fields[1:], dtype='float32')
+                        embeddings_from_file[word] = vector
+
+            if pretrained_embeddings_dict:
+                # Check the all the values in the dictionary have the same
+                # length, and check that that length is the same as
+                # embedding_dim
+                embeddings_dict_dim = 0
+                for word, vector in pretrained_embeddings_dict.items():
+                    if not embeddings_dict_dim:
+                        embeddings_dict_dim = len(vector)
+                    if embeddings_dict_dim != len(vector):
+                        raise ValueError("Found vectors of different lengths in "
+                                         "the pretrained_embeddings_dict.")
+                if embeddings_dict_dim != embedding_dim:
+                    raise ValueError("Provided embedding_dim of {}, but "
+                                     "pretrained_embeddings_dict has embeddings "
+                                     "of size {}".format(embedding_dim,
+                                                         embeddings_dict_dim))
+
+            vocab_size = self.data_indexer.get_vocab_size(namespace=namespace)
+            # Build the embedding matrix
+            embedding_matrix = self.initialize_random_matrix((vocab_size,
+                                                              embedding_dim))
+            # The 2 here because there is no point in setting vectors
+            # for 0 (padding token) and 1 (OOV token)
+            for i in tqdm(range(2, vocab_size)):
+                # Get the word corresponding to the index
+                word = self.data_indexer.get_word_from_index(i)
+                # If we don't have a pre-trained vector for this word, just
+                # leave this row alone so the word has a random initialization.
+                if (pretrained_embeddings_dict and
+                        word in pretrained_embeddings_dict):
+                    embedding_matrix[i] = pretrained_embeddings_dict[word]
+                else:
+                    if embeddings_from_file and word in embeddings_from_file:
+                        embedding_matrix[i] = embeddings_from_file[word]
+            self.write_pickle(embedding_matrix, self.embedding_pickle_file)
+        else:
+            embedding_matrix = self.read_pickle(self.embedding_pickle_file)
+
+            print('==========>', embedding_matrix.shape)
+
         return embedding_matrix

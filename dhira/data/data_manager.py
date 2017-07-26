@@ -15,7 +15,7 @@ class DataManager():
     """
 
     def __init__(self, dataset, pickle_directory='dhira_pickle_folder'):
-        self.data_indexer = DataIndexer()
+        # self.data_indexer = DataIndexer()
         self.dataset_type = dataset
         self.data_indexer_fitted = False
         self.training_data_max_lengths = {}
@@ -96,24 +96,30 @@ class DataManager():
             of features in the train set, which can be used to initialize a
             progress bar.
         """
-        training_dataset = self.dataset_type.read_train_data_from_file()
+        self.dataset_type.read_train_data_from_file()
         if max_features:
             logger.info("Truncating the training dataset "
                         "to {} features".format(max_features))
-            training_dataset = training_dataset.truncate(max_features)
+            self.dataset_type.train_features = self.dataset_type.truncate(self.dataset_type.train_features ,
+                                                                          max_features)
 
-        training_dataset_size = len(training_dataset.features)
+        training_dataset_size = len(self.dataset_type.train_features)
 
         # This is a hack to get the function to run the code above immediately,
         # instead of doing the standard python generator lazy-ish evaluation.
         # This is necessary to set the class variables ASAP.
-        def _get_train_batch_generator(self):
-            for feature in training_dataset.train_features:
+        def _get_train_batch_generator():
+            for feature in self.dataset_type.train_features:
+                # Now, we want to take the instance and convert it into
+                # NumPy arrays suitable for training.
                 inputs, labels = feature.as_training_data()
                 yield inputs, labels
 
-        # return _get_train_batch_generator, training_dataset_size
-        return self.dataset_type.get_train_batch_generator, training_dataset_size
+        #First try for model specific generator, if not found use default
+        try:
+            return  self.dataset_type.get_train_batch_generator, training_dataset_size
+        except:
+            return _get_train_batch_generator, training_dataset_size
 
     #--------------------------------------------------------------------------------------
 
@@ -151,15 +157,26 @@ class DataManager():
             progress bar.
         """
 
-        validation_dataset = self.dataset_type.read_val_data_from_file()
+        self.dataset_type.read_val_data_from_file()
         if max_features:
             logger.info("Truncating the validation dataset "
                         "to {} features".format(max_features))
-            validation_dataset = validation_dataset.truncate(max_features)
+            self.dataset_type.val_features = self.dataset_type.truncate(self.dataset_type.val_features, max_features)
 
-        validation_dataset_size = len(validation_dataset.features)
+        validation_dataset_size = len(self.dataset_type.val_features)
 
-        return self.dataset_type.get_validation_data_generator, validation_dataset_size
+        def _get_validation_batch_generator():
+            for feature in self.dataset_type.val_features:
+                # Now, we want to take the instance and convert it into
+                # NumPy arrays suitable for training.
+                inputs, labels = feature.as_training_data()
+                yield inputs, labels
+
+        #First try for model specific generator, if not found use default
+        try:
+            return  self.dataset_type.get_validation_batch_generator, validation_dataset_size
+        except:
+            return _get_validation_batch_generator, validation_dataset_size
 
     # --------------------------------------------------------------------------------------
 

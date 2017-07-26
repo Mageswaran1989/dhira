@@ -33,7 +33,7 @@ class DataIndexer:
     def _default_namespace_reverse_word_indices_dict(self):
         return {0: self._padding_token, 1: self._oov_token}
 
-    def fit_word_dictionary(self, dataset, min_count=1):
+    def fit_word_dictionary(self, text_features, min_count=1):
         """
         Given a Dataset, this method decides which words (which could be words
         or characters) are given an index, and which ones are mapped to an OOV
@@ -51,10 +51,10 @@ class DataIndexer:
             to be indexed. 
         :return: 
         """
-        if not isinstance(dataset, Dataset):
-            raise ValueError("Expected dataset to be type "
-                             "Dataset, found {} of type "
-                             "{}".format(dataset, type(dataset)))
+        # if not isinstance(dataset, Dataset):
+        #     raise ValueError("Expected dataset to be type "
+        #                      "Dataset, found {} of type "
+        #                      "{}".format(dataset, type(dataset)))
         if not isinstance(min_count, int):
             raise ValueError("Expected min_count to be type "
                              "int, found {} of type "
@@ -62,10 +62,10 @@ class DataIndexer:
 
         logger.info("Fitting word dictionary with min count of %d", min_count)
         namespace_word_counts = defaultdict(Counter)
-        for instance in tqdm.tqdm(dataset.features):
+        for feature in tqdm.tqdm(text_features):
             # dictionary with keys as namespace names, and values as array
             # the words for that namespace.
-            namespace_dict = instance.words()
+            namespace_dict = feature.words()
             for namespace in namespace_dict:
                 for word in namespace_dict[namespace]:
                     namespace_word_counts[namespace][word] += 1

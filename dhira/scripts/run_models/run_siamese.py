@@ -206,10 +206,10 @@ def main():
         test_data_gen, test_data_size = data_manager.get_test_data_from_file(
             [config.test_file])
 
-    vars(config)["word_vocab_size"] = data_manager.data_indexer.get_vocab_size()
+    vars(config)["word_vocab_size"] = quora_dataset.data_indexer.get_vocab_size()
 
     # Get the embeddings.
-    embedding_manager = EmbeddingManager(quora_dataset.data_indexer)
+    embedding_manager = EmbeddingManager(quora_dataset.data_indexer, pickle_dir=save_dir)
     embedding_matrix = embedding_manager.get_embedding_matrix(
         config.word_embedding_dim,
         config.pretrained_embeddings_file_path)
@@ -217,6 +217,8 @@ def main():
 
     # Initialize the model.
     model = SiameseBiLSTM(vars(config))
+
+    print('===========>', vars(config))
     model.build_graph()
 
     if mode == "train":

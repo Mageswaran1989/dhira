@@ -7,6 +7,7 @@ from dhira.data.utils.pickle_data import PickleData
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 from sklearn import datasets
 
+
 class Dataset(PickleData):
     """
     A collection of Features. This base class has general methods that apply
@@ -31,10 +32,12 @@ class Dataset(PickleData):
         :param test_file: 
         :param val_file: 
         """
+
+        print(name)
+        print(pickle_dir)
         super(Dataset, self).__init__(pickle_directory=pickle_dir)
         self.name = name
         self.feature_type = feature_type
-        self.pickle_dir = pickle_dir
 
         self.train_features = train_features
         self.val_features = val_features
@@ -43,11 +46,11 @@ class Dataset(PickleData):
         self.test_files = test_files
         self.val_files = val_files
 
-        self.train_pickle_file = self.pickle_directory + '/' + self.name + '-train.p'
-        self.val_pickle_file = self.pickle_directory + '/' + self.name + '-val.p'
-        self.test_pickle_file = self.pickle_directory + '/' + self.name +  '-test.p'
+        self.train_pickle_file = self.name + '-train.p'
+        self.val_pickle_file = self.name + '-val.p'
+        self.test_pickle_file = self.name +  '-test.p'
+        self.indexer_pickle_file = self.name + '-data_indexr.p'
 
-        super(Dataset, self).__init__(pickle_directory=self.pickle_directory)
 
     def merge(self, other):
         """
@@ -65,7 +68,8 @@ class Dataset(PickleData):
         else:
             raise ValueError("Cannot merge datasets with different types")
 
-    def truncate(self, max_features):
+    @staticmethod
+    def truncate(features, max_features):
         """
         Truncate the dataset to a fixed size.
         :param max_features (int): 
@@ -84,14 +88,14 @@ class Dataset(PickleData):
             raise ValueError("max_features must be at least 1"
                              ", found {}".format(max_features))
 
-        if len(self.features) <= max_features:
-            return self
+        if len(features) <= max_features:
+            return features
 
         # new_features = [i for i in self.features] TODO: Remove
-        return self.__class__(self.features[:max_features])
+        return features[:max_features]
 
     @classmethod
-    def read_from_file(cls, file_names, feature_type):
+    def to_features(cls, file_names, feature_type):
         """
         Read a dataset (basically a list of features) from
         a data file.
@@ -118,10 +122,10 @@ class Dataset(PickleData):
         logger.info("Reading files {} to a list of lines.".format(file_names))
         lines = [x.strip() for filename in file_names
                  for x in tqdm(codecs.open(filename, "r", "utf-8").readlines())]
-        return cls.read_from_lines(lines, feature_type)
+        return cls.lines_to_features(lines, feature_type)
 
     @classmethod
-    def read_from_lines(cls, lines, feature_type):
+    def lines_to_features(cls, lines, feature_type):
         """
         Read a dataset (basically a list of features) from
         a data file.
@@ -162,23 +166,14 @@ class Dataset(PickleData):
 
         return features
 
-    # This is a hack to get the function to run the code above immediately,
-    # instead of doing the standard python generator lazy-ish evaluation.
-    # This is necessary to set the class variables ASAP.
     def get_train_batch_generator(self):
-        for feature in self.train_features:
-            inputs, labels = feature.as_training_data()
-            yield inputs, labels
+        raise NotImplementedError
 
     def get_validation_batch_generator(self):
-        for feature in self.val_features:
-            inputs, labels = feature.as_training_data()
-            yield inputs, labels
+        raise NotImplementedError
 
     def get_test_batch_generator(self):
-        for feature in self.test_features:
-            inputs, labels = feature.as_training_data()
-            yield inputs, labels
+        raise NotImplementedError
 
     def read_train_data_from_file(self):
         raise NotImplementedError

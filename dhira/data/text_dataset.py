@@ -1,6 +1,7 @@
 import codecs
 import itertools
 import logging
+import sys
 from tqdm import tqdm
 
 from .dataset import Dataset
@@ -17,21 +18,36 @@ class TextDataset(Dataset):
     to read in data from a file and converting it into other kinds of Datasets.
     """
 
-    def __init__(self, feature_type = None, train_files = None, test_files = None, val_files = None,
-                 pickle_dir = None):
+    def __init__(self,
+                 name='default',
+                 feature_type=None,
+                 train_files=None,
+                 test_files=None,
+                 val_files=None,
+                 train_features=None,
+                 val_features=None,
+                 test_features=None,
+                 pickle_dir=None):
         """
         Construct a new TextDataset
         :param features: List of TextFeature
                 A list of TextFeatures to construct
                     the TextDataset from.
         """
-        super(TextDataset, self).__init__(feature_type=feature_type, train_files=train_files,
-                                          test_files = test_files, val_files=val_files, pickle_dir=pickle_dir)
+        super(TextDataset, self).__init__(name=name,
+                                          feature_type=feature_type,
+                                          train_files=train_files,
+                                          test_files = test_files,
+                                          val_files=val_files,
+                                          train_features=train_features,
+                                          val_features=val_features,
+                                          test_features=test_features,
+                                          pickle_dir=pickle_dir)
 
     @staticmethod
-    def fit_word_dictionary(dataset: Dataset, min_count: int):
+    def fit_word_dictionary(text_features, min_count: int):
         data_indexer: DataIndexer = DataIndexer()
-        data_indexer.fit_word_dictionary(dataset, min_count)
+        data_indexer.fit_word_dictionary(text_features, min_count)
         return data_indexer
 
     @staticmethod
@@ -42,6 +58,7 @@ class TextDataset(Dataset):
                         The DataIndexer to use in converting words to indices.
         :return: IndexedDataset
         """
+        logger.info('Converting to indexed features...')
         indexed_features = [feature.to_indexed_feature(data_indexer) for
                             feature in tqdm(text_features)]
         return indexed_features
@@ -94,21 +111,26 @@ class IndexedDataset(Dataset):
         self.max_lengths = max_lengths
         self.index_mode = index_mode
 
+        self.max_lengths_to_use = None
 
-    def max_lengths(self):
+        print(self.name, self.pickle_directory)
+
+    @staticmethod
+    def max_lengths(features):
         """
 
         :return: 
         """
         max_lengths = {}
-        lengths = [feature.get_lengths() for feature in self.features]
+        lengths = [feature.get_lengths() for feature in features]
         if not lengths:
             return max_lengths
         for key in lengths[0]:
             max_lengths[key] = max(x[key] if key in x else 0 for x in lengths)
         return max_lengths
 
-    def pad_features(self, max_lengths=None):
+    @staticmethod
+    def pad_features(features, max_lengths=None):
         """
         Make all of the IndexedFeatures in the dataset have the same length
         by padding them (in the front) with zeros.
@@ -127,7 +149,7 @@ class IndexedDataset(Dataset):
         # particular dimension. If we were, we use that instead of the
         # feature-based one.
         logger.info("Getting max lengths from features")
-        feature_max_lengths = self.max_lengths()
+        feature_max_lengths = IndexedDataset.max_lengths(features)
         logger.info("Feature max lengths: %s", str(feature_max_lengths))
         lengths_to_use = {}
         for key in feature_max_lengths:
@@ -138,8 +160,10 @@ class IndexedDataset(Dataset):
 
         logger.info("Now actually padding features to length: %s",
                     str(lengths_to_use))
-        for feature in tqdm(self.features):
+        for feature in tqdm(features):
             feature.pad(lengths_to_use)
+
+        return features
 
     def as_training_data(self, mode="word"):
         """
@@ -203,15 +227,13 @@ class IndexedDataset(Dataset):
 
         logger.info("Getting training data from {}".format(self.train_files))
 
-        if not self.check_pickle_exists(self.train_pickle_file):
+        if not self.check_pickle_exists(self.train_pickle_file) and \
+                not self.check_pickle_exists(self.indexer_pickle_file):
             logger.info("Processing the train data file for first time")
-
-            print("======================================")
-            print(self.train_files, self.feature_type)
-            dataset = TextDataset.read_from_file(self.train_files, self.feature_type)
-            self.data_indexer = TextDataset.fit_word_dictionary(dataset, self.min_count)
+            self.train_features = Dataset.to_features(self.train_files, self.feature_type)
+            self.data_indexer = TextDataset.fit_word_dictionary(self.train_features, self.min_count)
             self.data_indexer_fitted = True
-            features = dataset.to_indexed_features(self.data_indexer)
+            self.train_features = TextDataset.to_indexed_features(self.train_features, self.data_indexer)
 
             # We now need to check if the user specified max_lengths for
             # the feature, and accordingly truncate or pad if applicable. If
@@ -223,7 +245,7 @@ class IndexedDataset(Dataset):
                                  "Did you mean to do this?".format(self.max_lengths))
 
             # Get max lengths from the dataset
-            dataset_max_lengths = self.max_lengths()
+            dataset_max_lengths = IndexedDataset.max_lengths(self.train_features)
             logger.info("Instance max lengths {}".format(dataset_max_lengths))
             max_lengths_to_use = dataset_max_lengths
             if self.pad:
@@ -247,19 +269,24 @@ class IndexedDataset(Dataset):
                             "length: {}".format(str(max_lengths_to_use)))
             self.training_data_max_lengths = max_lengths_to_use
 
-            self.train_features = [feature.pad(max_lengths_to_use) for feature in features]
+
             self.write_pickle(self.train_features, self.train_pickle_file)
+            self.write_pickle(self.data_indexer, self.indexer_pickle_file)
         else:
             logger.info("Reusing the pickle file {}.".format(self.train_pickle_file))
             self.train_features = self.read_pickle(self.train_pickle_file)
+            logger.info("Reusing the pickle file {}.".format(self.indexer_pickle_file))
+            self.data_indexer = self.read_pickle(self.indexer_pickle_file)
+
+            self.training_data_max_lengths = IndexedDataset.max_lengths(self.train_features)
 
     def read_val_data_from_file(self):
         logger.info("Getting validation data from {}".format(self.val_files))
 
         if not self.check_pickle_exists(self.val_pickle_file):
             logger.info("Processing the validation data file for first time")
-            dataset = TextDataset.read_from_file(self.val_files, self.feature_type)
-            features = dataset.to_indexed_features(self.data_indexer)
+            self.val_features = TextDataset.to_features(self.val_files, self.feature_type)
+            self.val_features = TextDataset.to_indexed_features( self.val_features, self.data_indexer)
 
             # We now need to check if the user specified max_lengths for
             # the feature, and accordingly truncate or pad if applicable. If
@@ -271,9 +298,9 @@ class IndexedDataset(Dataset):
                                  "Did you mean to do this?".format(self.max_lengths))
 
             # Get max lengths from the dataset
-            dataset_max_lengths = self.max_lengths()
+            dataset_max_lengths = IndexedDataset.max_lengths(self.val_features)
             logger.info("Instance max lengths {}".format(dataset_max_lengths))
-            max_lengths_to_use = dataset_max_lengths
+            max_lengths_to_use = self.training_data_max_lengths
             if self.pad:
                 # If the user set max lengths, iterate over the
                 # dictionary provided and verify that they did not
@@ -293,9 +320,10 @@ class IndexedDataset(Dataset):
                                 dataset_max_lengths.keys()))
                 logger.info("Padding lengths to "
                             "length: {}".format(str(max_lengths_to_use)))
-            self.training_data_max_lengths = max_lengths_to_use
 
-            self.val_features = [feature.pad(max_lengths_to_use) for feature in features]
+            # for feature in self.val_features:
+            #     feature.pad(max_lengths_to_use)
+
             self.write_pickle(self.val_features, self.val_pickle_file)
         else:
             logger.info("Reusing the pickle file {}.".format(self.val_features))
@@ -306,3 +334,23 @@ class IndexedDataset(Dataset):
             ''
         else:
             ''
+
+    def get_train_batch_generator(self):
+        for feature in self.train_features:
+            # For each instance, we want to pad or truncate if applicable
+            if self.pad:
+                feature.pad(self.training_data_max_lengths)
+            # Now, we want to take the instance and convert it into
+            # NumPy arrays suitable for training.
+            inputs, labels = feature.as_training_data(mode='word')
+            yield inputs, labels
+
+    def get_validation_batch_generator(self):
+        for feature in self.val_features:
+            # For each instance, we want to pad or truncate if applicable
+            if self.pad:
+                feature.pad(self.training_data_max_lengths)
+            # Now, we want to take the instance and convert it into
+            # NumPy arrays suitable for training.
+            inputs, labels = feature.as_training_data(mode='word')
+            yield inputs, labels

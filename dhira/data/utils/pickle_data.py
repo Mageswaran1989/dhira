@@ -2,7 +2,8 @@ import pickle
 import os
 import errno
 
-class PickleData():
+
+class PickleData:
 
     def __init__(self, pickle_directory):
         self.pickle_directory = pickle_directory
