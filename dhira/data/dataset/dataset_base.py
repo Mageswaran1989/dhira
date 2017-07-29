@@ -1,11 +1,15 @@
+import os
 import logging
-from dhira.data.features.feature import Feature
-from tqdm import tqdm
 import codecs
 import itertools
+
+from dhira.data.features.feature import Feature
+from tqdm import tqdm
 from dhira.data.utils.pickle_data import PickleData
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+from dhira.data.download.downloader import Downloader
 from sklearn import datasets
+
+logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
 class Dataset(PickleData):
@@ -14,7 +18,6 @@ class Dataset(PickleData):
     to all collections of Features. That basically is just methods that
     operate on sets, like merging and truncating.
     """
-
     def __init__(self,
                  name='default',
                  feature_type = None,
@@ -24,7 +27,8 @@ class Dataset(PickleData):
                  train_features = None,
                  val_features=None,
                  test_features=None,
-                 pickle_dir = None):
+                 pickle_dir = None,
+                 download_path=None):
         """
         Initializes the Dataset with the feature type to be read and the required files
         :param feature_type: Sub class of `Feature` type
@@ -32,10 +36,8 @@ class Dataset(PickleData):
         :param test_file: 
         :param val_file: 
         """
-
-        print(name)
-        print(pickle_dir)
         super(Dataset, self).__init__(pickle_directory=pickle_dir)
+        self.download_path = download_path
         self.name = name
         self.feature_type = feature_type
 
@@ -51,6 +53,19 @@ class Dataset(PickleData):
         self.test_pickle_file = self.name +  '-test.p'
         self.indexer_pickle_file = self.name + '-data_indexr.p'
 
+
+    def test_downloaded_file(self):
+        raise NotImplementedError
+
+    def download(self, url: str):
+        """
+        Downloads the data set and extracts to the provided download_path
+        """
+        if not os.path.isdir(self.download_path):
+            os.mkdir(self.download_path)
+        file = self.download_path + '/' + url.split('/')[-1]
+        self._downloaded_path = Downloader.get(url, file)
+        if('tar' in file): self._downloaded_path = Downloader.extract_tar(file, self.download_path) #TODO check file type
 
     def merge(self, other):
         """
@@ -166,22 +181,39 @@ class Dataset(PickleData):
 
         return features
 
-    def get_train_batch_generator(self):
+    def load_train_features_from_file(self):
         raise NotImplementedError
+
+    def load_val_features_from_file(self):
+        raise NotImplementedError
+
+    def load_test_features_from_file(self):
+        raise NotImplementedError
+
+    #Override this for more control at feature level
+
+    # This is a hack to get the function to run the code above immediately,
+    # instead of doing the standard python generator lazy-ish evaluation.
+    # This is necessary to set the class variables ASAP.
+    def get_train_batch_generator(self):
+        for feature in self.train_features:
+            # Now, we want to take the instance and convert it into
+            # NumPy arrays suitable for training.
+            inputs, labels = feature.as_training_data()
+            yield inputs, labels
 
     def get_validation_batch_generator(self):
-        raise NotImplementedError
+        for feature in self.val_features:
+            # Now, we want to take the instance and convert it into
+            # NumPy arrays suitable for training.
+            inputs, labels = feature.as_validation_data()
+            yield inputs, labels
 
     def get_test_batch_generator(self):
-        raise NotImplementedError
-
-    def read_train_data_from_file(self):
-        raise NotImplementedError
-
-    def read_val_data_from_file(self):
-        raise NotImplementedError
-
-    def read_test_data_from_file(self):
-        raise NotImplementedError
+        for feature in self.test_features:
+            # Now, we want to take the instance and convert it into
+            # NumPy arrays suitable for training.
+            inputs, labels = feature.as_testing_data()
+            yield inputs, labels
 
 #-------------------------------------------------------------------------------------

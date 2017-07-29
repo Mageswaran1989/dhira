@@ -4,7 +4,7 @@ import logging
 import sys
 from tqdm import tqdm
 
-from .dataset import Dataset
+from dhira.data.dataset.dataset_base import Dataset
 
 from dhira.data.data_indexer import DataIndexer
 
@@ -76,7 +76,9 @@ class IndexedDataset(Dataset):
     """
 
     def __init__(self, name='default', feature_type = None, train_files = None, test_files = None, val_files = None,
-                 min_count=1, pad=False, max_lengths=None, index_mode='word', pickle_dir=None):
+                 min_count=1, pad=False, max_lengths=None, index_mode='word', pickle_dir=None, train_features=None,
+                 val_features=None,
+                 test_features=None):
         """
         :param features: Use `read_from_file` method to load the features from the dataset
         :param min_count: int, default=1
@@ -101,9 +103,15 @@ class IndexedDataset(Dataset):
             character-level representations, or both. One of "word",
             "character", or "word+character"
         """
-        super(IndexedDataset, self).__init__(name=name, feature_type=feature_type, train_files=train_files,
-                                             test_files=test_files, val_files=val_files,
-                                             pickle_dir=pickle_dir)
+        super(IndexedDataset, self).__init__(name=name,
+                                             feature_type=feature_type,
+                                             train_files=train_files,
+                                             test_files=test_files,
+                                             val_files=val_files,
+                                             pickle_dir=pickle_dir,
+                                             train_features=train_features,
+                                             val_features=val_features,
+                                             test_features=test_features,)
         self.min_count = min_count
         self.data_indexer = None
         self.data_indexer_fitted = False
@@ -217,7 +225,7 @@ class IndexedDataset(Dataset):
         self.features.sort(reverse=reverse)
 
 
-    def read_train_data_from_file(self):
+    def load_train_features_from_file(self):
 
         if self.data_indexer_fitted:
             raise ValueError("You have already called get_train_data for this "
@@ -280,7 +288,7 @@ class IndexedDataset(Dataset):
 
             self.training_data_max_lengths = IndexedDataset.max_lengths(self.train_features)
 
-    def read_val_data_from_file(self):
+    def load_val_features_from_file(self):
         logger.info("Getting validation data from {}".format(self.val_files))
 
         if not self.check_pickle_exists(self.val_pickle_file):
@@ -329,7 +337,7 @@ class IndexedDataset(Dataset):
             logger.info("Reusing the pickle file {}.".format(self.val_features))
             self.val_features = self.read_pickle(self.val_pickle_file)
 
-    def read_test_data_from_file(self, filenames):
+    def load_test_features_from_file(self, filenames):
         if not self.check_pickle_exists(self.val_pickle_file):
             ''
         else:

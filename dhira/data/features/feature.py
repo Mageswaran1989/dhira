@@ -32,6 +32,16 @@ class Feature:
     def __init__(self, label=None):
         self.label = label
 
+    def as_training_data(self):
+        raise NotImplementedError
+
+    def as_validation_data(self):
+        raise NotImplementedError
+
+    def as_testing_data(self):
+        raise NotImplementedError
+
+
 class TextFeature(Feature):
     """
     An ``Feature`` that has some attached text, typically either a sentence

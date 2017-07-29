@@ -1,20 +1,20 @@
 import argparse
-import sys
+import json
 import logging
 import math
-import numpy as np
 import os
-import datetime
-import pandas as pd
 import pickle
-import json
+import sys
+
+import numpy as np
+import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
 from dhira.data.data_manager import DataManager
 from dhira.data.embedding_manager import EmbeddingManager
 from dhira.data.features.pair_feature import PairFeature
 from dhira.tf.models.siamese.siamese_bilstm import SiameseBiLSTM
-from dhira.data.text_dataset import IndexedDataset
+from dhira.data.dataset.text import IndexedDataset
 logger = logging.getLogger(__name__)
 
 

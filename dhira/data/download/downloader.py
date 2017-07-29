@@ -32,6 +32,7 @@ class Downloader:
                     pbar.hook)
         else:
             print('Resusing the file: ', local_file_name)
+        return local_file_name
 
     @staticmethod
     def extract_tar(file_name: str,  path_to_extract: str):

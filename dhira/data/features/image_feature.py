@@ -1,11 +1,30 @@
+import numpy as np
 from .feature import Feature
 
 class ImageFeature(Feature):
     """
-    Class that encapsulates the common functionality for an image features
+    Class that encapsulates an image feature
     """
     def __init__(self, image, label):
-        super(Feature, self).__init__(label)
-        self.image = image
+        super(ImageFeature, self).__init__(label)
+        self.image: np.ndarray = image
 
-# class BatchImageFeatures
+    def normalize(self, x):
+        """
+        Normalize a list of sample image data in the range of 0 to 1
+        : x: List of image data.  The image shape is (32, 32, 3)
+        : return: Numpy array of normalize data
+        """
+        minV = np.min(x)
+        maxV = np.max(x)
+        ret = (x - minV) / maxV
+        return ret
+
+    def as_training_data(self):
+        return ((self.image), (np.asarray(self.label)))
+
+    def as_validation_data(self):
+        return ((self.image), (np.asarray(self.label)))
+
+    def as_testing_data(self):
+        return ((self.image), (np.asarray(self.label)))

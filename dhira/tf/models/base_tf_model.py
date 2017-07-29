@@ -1,11 +1,12 @@
 import logging
 import os
 import time
+import json
 import math
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.tensorboard.plugins import projector
-from tqdm import tqdm
+from tqdm import tqdm_notebook as tqdm
 
 from dhira.data.data_manager import DataManager
 
@@ -21,7 +22,7 @@ class BaseTFModel:
     :param mode: str
         One of [train|predict], to indicate what you want the model to do.
     """
-    def __init__(self, mode):
+    def __init__(self, name, mode, save_dir, log_dir, run_id):
         self.mode = mode
         self.global_step = tf.get_variable(name="global_step",
                                            shape=[],
@@ -29,12 +30,14 @@ class BaseTFModel:
                                            initializer=tf.constant_initializer(0),
                                            trainable=False)
 
+        self._name = name
+
         # Outputs from the model, defined by child classes
         self.y_pred = None
         self.loss = None
         self.accuracy = None
 
-        self.training_op = None
+        self.training_op = None #Training optimization
         self.gradient_and_variance = None
 
         #To store all summaries of each model
@@ -48,8 +51,44 @@ class BaseTFModel:
         self._val_summary_writer = None
 
         #Misc Varaibles
-        timestamp = str(int(time.time()))
-        self._log_dir = os.path.abspath(os.path.join(os.path.curdir, "logs/", timestamp))
+        #Directory setup
+        self._run_id = run_id
+        self._save_dir = save_dir
+        self._log_dir = log_dir
+        # self.log_path = log_path
+        # timestamp = str(int(time.time()))
+        #os.path.abspath(os.path.join(os.path.curdir, "logs/", timestamp))
+        self.setup_dir()
+
+    def setup_dir(self):
+        save_dir = os.path.join(self._save_dir, self._name, self._run_id.zfill(2) + "/")
+
+        if not os.path.exists(save_dir):
+            logger.info("save_dir {} does not exist, "
+                        "creating it".format(save_dir))
+            os.makedirs(save_dir)
+
+        # Log the run parameters.
+        log_dir = os.path.join(self._log_dir, self._name, self._run_id.zfill(2))
+        logger.info("Writing logs to {}".format(log_dir))
+
+        if not os.path.exists(log_dir):
+            logger.info("log path {} does not exist, "
+                        "creating it".format(log_dir))
+            os.makedirs(log_dir)
+
+        #Update the dir with respect to current run_id
+        self._save_dir = save_dir
+        self._log_dir = log_dir
+
+    def log_params(self):
+        params_path = os.path.join(self._log_dir, self.mode + "params.json")
+        logger.info("Writing params to {}".format(params_path))
+
+        params = [(str(k),str(v)) for k,v in self.__dict__.items()]
+
+        with open(params_path, 'w') as params_file:
+            json.dump(dict(params), params_file, indent=4)
 
     def _create_placeholders(self):
         raise NotImplementedError
@@ -58,7 +97,8 @@ class BaseTFModel:
         raise NotImplementedError
 
     def _evaluate_model_parameters(self, session):
-        raise NotImplementedError
+        """Override this method to evaluate model specific parameters"""
+        ''
 
     def build_graph(self, seed=0):
         """
@@ -68,6 +108,8 @@ class BaseTFModel:
         :param seed: int, optional (default=0)
              The graph-level seed to use when building the graph.
         """
+
+        self.log_params() #Small trick to get all the variables and log them
         with tf.device("/gpu:0"):
             logger.info("Building graph...")
             tf.set_random_seed(seed)
@@ -186,8 +228,7 @@ class BaseTFModel:
     def train(self,
               get_train_instance_generator, get_val_instance_generator,
               batch_size, num_train_steps_per_epoch, num_epochs,
-              num_val_steps, save_path, log_path,
-              val_period=250, log_period=10, save_period=250,
+              num_val_steps, val_period=250, log_period=10, save_period=250,
               max_ckpts_to_keep=10, patience=0):
         """
         Train the model.
@@ -262,8 +303,8 @@ class BaseTFModel:
                     global_step = sess.run(self.global_step) + 1
 
                     # inputs, targets = train_batch
-                    if (len(train_batch) != batch_size):
-                        continue
+                    # if (len(train_batch) != batch_size):
+                    #     continue
 
                     feed_dict = self._get_train_feed_dict(train_batch)
 
@@ -291,11 +332,11 @@ class BaseTFModel:
                         self._val_summary_writer.add_summary(val_summary, global_step)
                     # Write a model checkpoint if necessary.
                     if global_step % save_period == 0:
-                        self._saver.save(sess, save_path, global_step=global_step)
+                        self._saver.save(sess, self._save_dir, global_step=global_step)
 
                 # End of the epoch, so save the model and check validation loss,
                 # stopping if applicable.
-                self._saver.save(sess, save_path, global_step=global_step)
+                self._saver.save(sess, self._save_dir, global_step=global_step)
                 val_acc, val_loss, val_summary = self._evaluate_on_validation(
                     get_val_instance_generator=get_val_instance_generator,
                     batch_size=batch_size,
@@ -396,8 +437,8 @@ class BaseTFModel:
                               leave=False):
 
             #Ignore the last batch if the size doesn't match
-            if(len(val_batch) != batch_size):
-                continue
+            # if(len(val_batch) != batch_size):
+            #     continue
             feed_dict = self._get_validation_feed_dict(val_batch)
             val_batch_acc, val_batch_loss = session.run(
                 [self.accuracy, self.loss],

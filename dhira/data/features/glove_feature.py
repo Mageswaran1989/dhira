@@ -16,5 +16,8 @@ class GloveFeature(TextFeature):
     def as_training_data(self):
         return ((self.focal_input, self.context_input, self.cooccurrence_count), (np.asarray(self.label),))
 
+    def as_validation_data(self):
+        return ((self.focal_input, self.context_input, self.cooccurrence_count), (np.asarray(self.label),))
+
     def as_testing_data(self):
         return ((self.focal_input, self.context_input, self.cooccurrence_count), (np.asarray(self.label),))

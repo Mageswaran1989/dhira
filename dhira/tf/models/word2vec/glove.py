@@ -25,32 +25,32 @@ class Glove(BaseTFModel):
         right_size
     """
     @overrides
-    def __init__(self, config_dict):
-        config_dict = deepcopy(config_dict)
-        mode = config_dict.pop("mode")
-        super(Glove, self).__init__(mode=mode)
+    def __init__(self, name, mode, save_dir, log_dir, run_id,
+                 embedding_size, cooccurrence_cap, vocabulary_size, batch_size, learning_rate):
+        super(Glove, self).__init__(name=name,
+                                              mode=mode,
+                                              run_id=run_id,
+                                              save_dir=save_dir,
+                                              log_dir=log_dir)
 
-        self.embedding_size: int = config_dict.pop("embedding_size")
+        self.embedding_size: int = embedding_size
         # self.left_context: int = config_dict.pop("left_context")
         # self.right_context: int = config_dict.pop("right_context")
 
         # self.max_vocab_size = config_dict.pop("max_vocab_size")
         # self.min_occurrences = config_dict.pop("min_occurrences")
-        self.cooccurrence_cap = config_dict.pop("cooccurrence_cap", None)
-        self.vocab_size = config_dict.pop("vocabulary_size", None)
-        self.batch_size = config_dict.pop("batch_size")
-        self.learning_rate = config_dict.pop("learning_rate")
+        self.cooccurrence_cap = cooccurrence_cap
+        self.vocab_size = vocabulary_size
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
         self.scaling_factor = float(3/4)
         self.__embeddings = None
 
-        if config_dict:
-            logger.warning("UNUSED VALUES IN CONFIG DICT: {}".format(config_dict))
-
     @overrides
     def _create_placeholders(self):
-        self.focal_input = tf.placeholder(tf.int32, shape=[self.batch_size], name="focal_words")
-        self.context_input = tf.placeholder(tf.int32, shape=[self.batch_size], name="context_words")
-        self.cooccurrence_count = tf.placeholder(tf.float32, shape=[self.batch_size], name="cooccurrence_count")
+        self.focal_input = tf.placeholder(tf.int32, shape=None, name="focal_words")
+        self.context_input = tf.placeholder(tf.int32, shape=None, name="context_words")
+        self.cooccurrence_count = tf.placeholder(tf.float32, shape=None, name="cooccurrence_count")
 
     @overrides
     def _build_forward(self):

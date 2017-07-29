@@ -1,10 +1,8 @@
 import logging
-import numpy as np
 from itertools import islice
 
-from dhira.data.text_dataset import TextDataset
-from dhira.data.data_indexer import DataIndexer
-from dhira.data.utils.pickle_data import PickleData
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 class DataManager():
@@ -55,9 +53,21 @@ class DataManager():
             # "targets" are numpy arrays.
             flattened = ([ins[0] for ins in batched_features],
                          [ins[1] for ins in batched_features])
+            # print(flattened)
             flattened_inputs, flattened_targets = flattened
-            batch_inputs = tuple(map(np.array, tuple(zip(*flattened_inputs))))
-            batch_targets = tuple(map(np.array, tuple(zip(*flattened_targets))))
+            # print(len(flattened_inputs))
+            # print(flattened_inputs[0].shape)
+
+            # batch_inputs = tuple(map(np.array, tuple(zip(*flattened_inputs))))
+            # batch_targets = tuple(map(np.array, tuple(zip(*flattened_targets))))
+
+            # batch_inputs = tuple(tuple(zip(*flattened_inputs)))
+            # batch_targets = tuple(tuple(zip(*flattened_targets)))
+            batch_inputs, batch_targets = flattened_inputs, flattened_targets
+            # print(batch_inputs[0].shape)
+            # print((batch_size))
+            # print(len(batch_inputs))
+            # print(len(batch_targets))
             yield batch_inputs, batch_targets
             batched_features = list(islice(feature_generator, batch_size))
 
@@ -96,7 +106,7 @@ class DataManager():
             of features in the train set, which can be used to initialize a
             progress bar.
         """
-        self.dataset_type.read_train_data_from_file()
+        self.dataset_type.load_train_features_from_file()
         if max_features:
             logger.info("Truncating the training dataset "
                         "to {} features".format(max_features))
@@ -105,21 +115,7 @@ class DataManager():
 
         training_dataset_size = len(self.dataset_type.train_features)
 
-        # This is a hack to get the function to run the code above immediately,
-        # instead of doing the standard python generator lazy-ish evaluation.
-        # This is necessary to set the class variables ASAP.
-        def _get_train_batch_generator():
-            for feature in self.dataset_type.train_features:
-                # Now, we want to take the instance and convert it into
-                # NumPy arrays suitable for training.
-                inputs, labels = feature.as_training_data()
-                yield inputs, labels
-
-        #First try for model specific generator, if not found use default
-        try:
-            return  self.dataset_type.get_train_batch_generator, training_dataset_size
-        except:
-            return _get_train_batch_generator, training_dataset_size
+        return self.dataset_type.get_train_batch_generator, training_dataset_size
 
     #--------------------------------------------------------------------------------------
 
@@ -157,7 +153,7 @@ class DataManager():
             progress bar.
         """
 
-        self.dataset_type.read_val_data_from_file()
+        self.dataset_type.load_val_features_from_file()
         if max_features:
             logger.info("Truncating the validation dataset "
                         "to {} features".format(max_features))
@@ -165,18 +161,7 @@ class DataManager():
 
         validation_dataset_size = len(self.dataset_type.val_features)
 
-        def _get_validation_batch_generator():
-            for feature in self.dataset_type.val_features:
-                # Now, we want to take the instance and convert it into
-                # NumPy arrays suitable for training.
-                inputs, labels = feature.as_training_data()
-                yield inputs, labels
-
-        #First try for model specific generator, if not found use default
-        try:
-            return  self.dataset_type.get_validation_batch_generator, validation_dataset_size
-        except:
-            return _get_validation_batch_generator, validation_dataset_size
+        return self.dataset_type.get_validation_batch_generator, validation_dataset_size
 
     # --------------------------------------------------------------------------------------
 
@@ -228,80 +213,14 @@ class DataManager():
         """
         logger.info("Getting test data from {}".format(filenames))
 
-        pickle_test_file = 'test_data.p'
+        self.dataset_type.load_test_features_from_file()
+        if max_features:
+            logger.info("Truncating the training dataset "
+                        "to {} features".format(max_features))
+            self.dataset_type.test_features = self.dataset_type.truncate(self.dataset_type.test_features ,
+                                                                          max_features)
 
-        if (not self.check_pickle_exists(pickle_test_file)):
-            logger.info("Processing the train data file for first time")
+        test_dataset_size = len(self.dataset_type.test_features)
 
-            test_dataset = self.dataset_type.read_from_file(filenames,
-                                                            self.feature_type)
-            if max_features:
-                logger.info("Truncating the test dataset "
-                            "to {} features".format(max_features))
-                test_dataset = test_dataset.truncate(max_features)
-
-            if self.dataset_type is TextDataset:
-                # With our fitted data indexer, we we convert the dataset
-                # from string tokens to numeric int indices.
-                logger.info("Indexing test dataset with DataIndexer "
-                            "fit on train data.")
-                test_dataset = test_dataset.to_indexed_dataset(
-                    self.data_indexer)
-            self.write_pickle(test_dataset, pickle_test_file)
-
-        else:
-            logger.info("Reusing the pickle file {}.".format(pickle_test_file))
-            indexed_test_dataset = self.read_pickle(pickle_test_file)
-
-        test_dataset_size = len(test_dataset.features)
-
-        if self.dataset_type is TextDataset:
-            # We now need to check if the user specified max_lengths for
-            # the feature, and accordingly truncate or pad if applicable. If
-            # max_lengths is None for a given string key, we assume that no
-            # truncation is to be done and the max lengths should be taken from
-            # the train dataset.
-            if not pad and max_lengths:
-                raise ValueError("Passed in max_lengths {}, but set pad to false. "
-                                 "Did you mean to do this?".format(max_lengths))
-            if pad:
-                # Get max lengths from the train dataset
-                training_data_max_lengths = self.training_data_max_lengths
-                logger.info("Max lengths in training "
-                            "data: {}".format(training_data_max_lengths))
-
-                max_lengths_to_use = training_data_max_lengths
-                # If the user set max lengths, iterate over the
-                # dictionary provided and verify that they did not
-                # pass any keys to truncate that are not in the feature.
-                if max_lengths is not None:
-                    for input_dimension, length in max_lengths.items():
-                        if input_dimension in training_data_max_lengths:
-                            max_lengths_to_use[input_dimension] = length
-                        else:
-                            raise ValueError("Passed a value for the max_lengths "
-                                             "that does not exist in the "
-                                             "feature. Improper input length "
-                                             "dimension (key) we found was {}, "
-                                             "lengths dimensions in the feature "
-                                             "are {}".format(
-                                input_dimension,
-                                training_data_max_lengths.keys()))
-                logger.info("Padding lengths to "
-                            "length: {}".format(str(max_lengths_to_use)))
-
-        # This is a hack to get the function to run the code above immediately,
-        # instead of doing the standard python generator lazy-ish evaluation.
-        # This is necessary to set the class variables ASAP.
-        def _get_test_data_generator():
-            for test_feature in test_dataset.features:
-                # For each feature, we want to pad or truncate if applicable
-                if pad and self.dataset_type is TextDataset:
-                    test_feature.pad(max_lengths_to_use)
-                    # Now, we want to take the feature and convert it into
-                    # NumPy arrays suitable for validation.
-                    inputs = test_feature.as_testing_data(mode=mode)
-                    yield inputs
-
-        return _get_test_data_generator, test_dataset_size
+        return self.dataset_type.get_test_batch_generator, test_dataset_size
 
