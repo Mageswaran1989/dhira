@@ -3,4 +3,5 @@ class Pipeline:
         ''
 
     def predict(self):
+        ''
 

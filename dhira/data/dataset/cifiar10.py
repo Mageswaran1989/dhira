@@ -15,7 +15,7 @@ class Cifiar10(Dataset):
     image_shape = (32,32,3)
 
     def __init__(self,
-                 name='default',
+                 name='Cifiar10',
                  feature_type = ImageFeature,
                  train_files = None,
                  test_files = None,
@@ -101,7 +101,7 @@ class Cifiar10(Dataset):
         valid_features = []
         valid_labels = []
 
-        if open(self._downloaded_path+'/'+'preprocess_validation.p') is not None:
+        if os.path.exists(self._downloaded_path+'/'+'preprocess_validation.p'):
             return #TODO does this ok?
 
         for batch_i in range(1, n_batches + 1):
@@ -135,7 +135,7 @@ class Cifiar10(Dataset):
         self._preprocess_and_save(
             np.array(test_features),
             np.array(test_labels),
-            self._downloaded_path + '/' +'preprocess_training.p')
+            self._downloaded_path + '/' +'preprocess_testing.p')
 
     def test_files(self):
         print('Testing')
@@ -256,7 +256,10 @@ class Cifiar10(Dataset):
             self.val_features.append(self.feature_type(image=image, label=label))
 
     def load_test_features_from_file(self):
-        test_features, test_labels = pickle.load(open(self._downloaded_path+'preprocess_training.p', mode='rb'))
+        test_features, test_labels = pickle.load(open(self._downloaded_path+'/preprocess_testing.p', mode='rb'))
+        #TODO rename teh file
         self.test_features = []
         for image, label in zip(test_features, test_labels):
             self.test_features.append(self.feature_type(image=image, label=label))
+
+

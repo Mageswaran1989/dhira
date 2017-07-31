@@ -88,7 +88,7 @@ class Glove(BaseTFModel):
 
         single_losses = tf.multiply(weighting_factor, distance_expr)
         self.loss = tf.reduce_sum(single_losses, name="GloVe_loss")
-        self.training_op = tf.train.AdagradOptimizer(self.learning_rate).minimize(self.loss)
+        self.training_op = tf.train.AdagradOptimizer(self.learning_rate).minimize(self.loss, global_step=self.global_step)
         self.__combined_embeddings = tf.add(focal_embeddings, context_embeddings, name="combined_embeddings")
         self.accuracy = tf.constant(0, name='dummy_accuracy')
         self.add_scalar_summary(self.loss)

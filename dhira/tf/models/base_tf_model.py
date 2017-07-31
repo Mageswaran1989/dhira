@@ -201,7 +201,7 @@ class BaseTFModel:
         # Output directory for models and summaries
 
 
-        print("Writing to {}\n".format(self._log_dir))
+        print("Writing to {}\n".format(os.path.abspath(self._log_dir)))
 
         train_summary_dir = os.path.join(self._log_dir, "summaries", "train")
         self._train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
@@ -221,9 +221,51 @@ class BaseTFModel:
         self.val_summary_op = tf.summary.merge(self._val_summaries)
 
         print("--------------------------------------------------")
-        print("\ntensorboard --logdir  {}\n".format(self._log_dir))
-        print("\ntensorboard --logdir  {} --port 6007\n".format(self.checkpoint_dir))
+        print("\ntensorboard --logdir  {}".format(os.path.abspath(self._log_dir)))
+        print("\ntensorboard --logdir  {} --port 6007".format(os.path.abspath(self.checkpoint_dir)))
         print("--------------------------------------------------")
+
+    def _evaluate_on_validation(self, get_val_instance_generator,
+                                batch_size,
+                                num_val_steps,
+                                session):
+        val_batch_gen = DataManager.get_batch_generator(
+            get_val_instance_generator, batch_size)
+        # Calculate the mean of the validation metrics
+        # over the validation set.
+        val_accuracies = []
+        val_losses = []
+        for val_batch in tqdm(val_batch_gen,
+                              total=num_val_steps,
+                              desc="Validation Batches Completed",
+                              leave=False):
+
+            #Ignore the last batch if the size doesn't match
+            # if(len(val_batch) != batch_size):
+            #     continue
+            feed_dict = self._get_validation_feed_dict(val_batch)
+            val_batch_acc, val_batch_loss = session.run(
+                [self.accuracy, self.loss],
+                feed_dict=feed_dict)
+
+            val_accuracies.append(val_batch_acc)
+            val_losses.append(val_batch_loss)
+
+        # Take the mean of the accuracies and losses.
+        # TODO/FIXME this assumes each batch is same shape, which
+        # is not necessarily true.
+        mean_val_accuracy = np.mean(val_accuracies)
+        mean_val_loss = np.mean(val_losses)
+
+        # Create a new Summary object with mean_val accuracy
+        # and mean_val_loss and add it to Tensorboard.
+        val_summary = tf.Summary(value=[
+            tf.Summary.Value(tag="_val_summaries/loss",
+                             simple_value=mean_val_loss),
+            tf.Summary.Value(tag="_val_summaries/accuracy",
+                             simple_value=mean_val_accuracy)])
+        return mean_val_accuracy, mean_val_loss, val_summary
+
 
     def train(self,
               get_train_instance_generator, get_val_instance_generator,
@@ -279,6 +321,9 @@ class BaseTFModel:
             after which training will be stopped.
         """
 
+        if self.y_pred is None or self.loss is None or self.accuracy is None or self.training_op is None: #Training optimization
+            raise NotImplementedError
+
         global_step = 0
         init_op = tf.global_variables_initializer()
 
@@ -300,6 +345,7 @@ class BaseTFModel:
                                         total=num_train_steps_per_epoch,
                                         desc="Train Batches Completed",
                                         leave=False):
+
                     global_step = sess.run(self.global_step) + 1
 
                     # inputs, targets = train_batch
@@ -332,11 +378,14 @@ class BaseTFModel:
                         self._val_summary_writer.add_summary(val_summary, global_step)
                     # Write a model checkpoint if necessary.
                     if global_step % save_period == 0:
-                        self._saver.save(sess, self._save_dir, global_step=global_step)
+                        ret = self._saver.save(sess, self._save_dir + '/' + self._name, global_step=global_step)
+                        logger.info('Saving final model @ ' + os.path.abspath(ret))
+
 
                 # End of the epoch, so save the model and check validation loss,
                 # stopping if applicable.
-                self._saver.save(sess, self._save_dir, global_step=global_step)
+                ret = self._saver.save(sess, self._save_dir + '/' + self._name, global_step=global_step)
+                logger.info('Saving final model @ ' + os.path.abspath(ret))
                 val_acc, val_loss, val_summary = self._evaluate_on_validation(
                     get_val_instance_generator=get_val_instance_generator,
                     batch_size=batch_size,
@@ -398,7 +447,7 @@ class BaseTFModel:
                         "to show a progress bar.")
 
         gpu_options = tf.GPUOptions(allow_growth=True)
-        sess_config = tf.ConfigProto(gpu_options=gpu_options)
+        sess_config = tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True, log_device_placement=True)
         with tf.Session(config=sess_config) as sess:
             saver = tf.train.Saver()
             logger.info("Getting latest checkpoint in {}".format(model_load_dir))
@@ -421,44 +470,32 @@ class BaseTFModel:
             y_pred_flat = np.concatenate(y_pred, axis=0)
         return y_pred_flat
 
-    def _evaluate_on_validation(self, get_val_instance_generator,
-                                batch_size,
-                                num_val_steps,
-                                session):
-        val_batch_gen = DataManager.get_batch_generator(
-            get_val_instance_generator, batch_size)
-        # Calculate the mean of the validation metrics
-        # over the validation set.
-        val_accuracies = []
-        val_losses = []
-        for val_batch in tqdm(val_batch_gen,
-                              total=num_val_steps,
-                              desc="Validation Batches Completed",
-                              leave=False):
+    def predict_on_single_feature(self, test_feature, model_load_dir):
+        """
+        Load a serialized model and use it for prediction on a test
+        set (from a finite generator).
+        :param model_load_dir: str
+            Path to a directory with serialized tensorflow checkpoints for the
+            model to be run. The most recent checkpoint will be loaded and used
+            for prediction.
 
-            #Ignore the last batch if the size doesn't match
-            # if(len(val_batch) != batch_size):
-            #     continue
-            feed_dict = self._get_validation_feed_dict(val_batch)
-            val_batch_acc, val_batch_loss = session.run(
-                [self.accuracy, self.loss],
-                feed_dict=feed_dict)
+        :param batch_size: int
+            The number of features per batch produced by the generator.
+        """
+        # model_load_dir = model_load_dir + '/checkpoint'
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        sess_config = tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True, log_device_placement=True)
+        with tf.Session(config=sess_config) as sess:
+            saver = tf.train.Saver()
+            logger.info("Getting latest checkpoint in {}".format(model_load_dir))
+            last_checkpoint = tf.train.latest_checkpoint(model_load_dir)
+            logger.info("Attempting to load checkpoint at {}".format(last_checkpoint))
+            saver.restore(sess, last_checkpoint)
+            logger.info("Successfully loaded {}!".format(last_checkpoint))
 
-            val_accuracies.append(val_batch_acc)
-            val_losses.append(val_batch_loss)
-
-        # Take the mean of the accuracies and losses.
-        # TODO/FIXME this assumes each batch is same shape, which
-        # is not necessarily true.
-        mean_val_accuracy = np.mean(val_accuracies)
-        mean_val_loss = np.mean(val_losses)
-
-        # Create a new Summary object with mean_val accuracy
-        # and mean_val_loss and add it to Tensorboard.
-        val_summary = tf.Summary(value=[
-            tf.Summary.Value(tag="_val_summaries/loss",
-                             simple_value=mean_val_loss),
-            tf.Summary.Value(tag="_val_summaries/accuracy",
-                             simple_value=mean_val_accuracy)])
-        return mean_val_accuracy, mean_val_loss, val_summary
-
+            y_pred = []
+            feed_dict = self._get_test_feed_dict(test_feature)
+            y_pred = sess.run(self.y_pred, feed_dict=feed_dict)
+            # y_pred.append(y_pred_batch)
+            # y_pred_flat = np.concatenate(y_pred, axis=0)
+        return y_pred

@@ -90,17 +90,17 @@ class Cifiar10ConvNet(BaseTFModel):
                              filter=weights,
                              strides=[1, conv_strides[0], conv_strides[1], 1],
                              padding='SAME')
-        logger.info("   ---> conv layer: ", layer.get_shape())
+        logger.info("   ---> conv layer: {}".format(layer.get_shape()))
         layer += biases
 
         layer = tf.nn.relu(layer)
-        logger.info("   ---> relu layer: ", layer.get_shape())
+        logger.info("   ---> relu layer: {}".format(layer.get_shape()))
 
         layer = tf.nn.max_pool(value=layer,
                                ksize=[1, pool_ksize[0], pool_ksize[1], 1],
                                strides=[1, pool_strides[0], pool_strides[1], 1],
                                padding='SAME')
-        logger.info("   ---> max pool layer: ", layer.get_shape())
+        logger.info("   ---> max pool layer: {}".format(layer.get_shape()))
 
         return layer
 
@@ -178,32 +178,32 @@ class Cifiar10ConvNet(BaseTFModel):
 
         num_outputs = 10  # number of classes
 
-        logger.info("x: ", x.get_shape())
+        logger.info("x: {}".format(x.get_shape()))
         #  Apply 1, 2, or 3 Convolution and Max Pool layers
         #    Play around with different number of outputs, kernel size and stride
         # Function Definition from Above:
         #    conv2d_maxpool(x_tensor, conv_num_outputs, conv_ksize, conv_strides, pool_ksize, pool_strides)
         layer = self.conv2d_maxpool(x, 16, conv_ksize, conv_strides, pool_ksize, pool_strides)
-        logger.info("conv1 layer: ", layer.get_shape())
+        logger.info("conv1 layer: {}".format(layer.get_shape()))
         layer = tf.nn.dropout(layer, keep_prob)
-        logger.info("conv1_dropout layer: ", layer.get_shape())
+        logger.info("conv1_dropout layer: {}".format(layer.get_shape()))
         layer = self.conv2d_maxpool(layer, 32, conv_ksize, conv_strides, pool_ksize, pool_strides)
-        logger.info("conv2 layer: ", layer.get_shape())
+        logger.info("conv2 layer: {}".format(layer.get_shape()))
 
         #  Apply a Flatten Layer
         # Function Definition from Above:
         #   flatten(x_tensor)
         layer = self.flatten(layer)
-        logger.info("flatten layer: ", layer.get_shape())
+        logger.info("flatten layer: {}".format(layer.get_shape()))
         layer = tf.nn.dropout(layer, keep_prob)
-        logger.info("flatten_dropout layer : ", layer.get_shape())
+        logger.info("flatten_dropout layer : {}".format(layer.get_shape()))
 
         #  Apply 1, 2, or 3 Fully Connected Layers
         #    Play around with different number of outputs
         # Function Definition from Above:
         #   fully_conn(x_tensor, num_outputs)
         layer = self.fully_conn(layer, 1024)
-        logger.info("fully_connected1 layer: ", layer.get_shape())
+        logger.info("fully_connected1 layer: {}".format(layer.get_shape()))
         #     layer = fully_conn(layer, 512)
         #     if(DEBUG_FLAG_): print("fully_connected2 layer: ", layer.get_shape())
         #     layer = fully_conn(layer, num_outputs)
@@ -213,7 +213,7 @@ class Cifiar10ConvNet(BaseTFModel):
         # Function Definition from Above:
         #   output(x_tensor, num_outputs)
         layer = self.output(layer, num_outputs)
-        logger.info("output layer: ", layer.get_shape(), "\n")
+        logger.info("output layer: {}".format(layer.get_shape(), "\n"))
 
         #  return output
         return layer
@@ -226,9 +226,11 @@ class Cifiar10ConvNet(BaseTFModel):
         # Name logits Tensor, so that is can be loaded from disk after training
         logits = tf.identity(logits, name='logits')
 
+        self.y_pred = logits
+
         # Loss and Optimizer
         self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=self.labels))
-        self.training_op = tf.train.AdamOptimizer().minimize(self.loss)
+        self.training_op = tf.train.AdamOptimizer().minimize(self.loss, global_step=self.global_step)
 
         # Accuracy
         correct_pred = tf.equal(tf.argmax(logits, 1), tf.argmax(self.labels, 1))
@@ -239,32 +241,23 @@ class Cifiar10ConvNet(BaseTFModel):
 
     @overrides
     def _get_train_feed_dict(self, batch):
-
         images, labels = batch
-        #
-        # print('=================> Info')
-        # print(len(batch))
-        # print(len(labels))
-        # print(len(images))
-        # print(images[0].shape)
-
-        feed_dict = {self.in_images: images,
-                     self.labels: labels,
+        feed_dict = {self.in_images: images[0],
+                     self.labels: labels[0],
                      self.keep_prop: self.keep_prop_value}
         return feed_dict
 
     @overrides
     def _get_validation_feed_dict(self, batch):
         images, labels = batch
-        feed_dict = {self.in_images: images,
-                     self.labels: labels,
+        feed_dict = {self.in_images: images[0],
+                     self.labels: labels[0],
                      self.keep_prop: self.keep_prop_value}
         return feed_dict
 
     @overrides
     def _get_test_feed_dict(self, batch):
         images, labels = batch
-        feed_dict = {self.in_images: images,
-                     self.labels: labels,
-                     self.keep_prop: self.keep_prop_value}
+        feed_dict = {self.in_images: images[0],
+                     self.keep_prop: 1.0}
         return feed_dict

@@ -21,10 +21,10 @@ class ImageFeature(Feature):
         return ret
 
     def as_training_data(self):
-        return ((self.image), (np.asarray(self.label)))
+        return ((self.image,), (self.label,))
 
     def as_validation_data(self):
-        return ((self.image), (np.asarray(self.label)))
+        return ((self.image,), (self.label,))
 
     def as_testing_data(self):
-        return ((self.image), (np.asarray(self.label)))
+        return ((self.image,), (self.label,))

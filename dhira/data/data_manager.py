@@ -1,6 +1,6 @@
 import logging
 from itertools import islice
-
+import random
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,20 @@ class DataManager():
         self.data_indexer_fitted = False
         self.training_data_max_lengths = {}
         self.pickle_directory = pickle_directory
+
+    @staticmethod
+    def get_random_feature(get_feature_generator, total_num_features):
+        random_pos = random.randint(1, total_num_features)
+        feature_generator = get_feature_generator()
+        batched_features = list(islice(feature_generator, random_pos, random_pos + 1))
+        flattened = ([ins[0] for ins in batched_features],
+                     [ins[1] for ins in batched_features])
+        flattened_inputs, flattened_targets = flattened
+
+        batch_inputs = tuple(map(np.asarray, tuple(zip(*flattened_inputs))))
+        batch_targets = tuple(map(np.asarray, tuple(zip(*flattened_targets))))
+        single_feature = batch_inputs, batch_targets
+        return single_feature
 
     @staticmethod
     def get_batch_generator(get_feature_generator, batch_size):
@@ -53,21 +67,11 @@ class DataManager():
             # "targets" are numpy arrays.
             flattened = ([ins[0] for ins in batched_features],
                          [ins[1] for ins in batched_features])
-            # print(flattened)
             flattened_inputs, flattened_targets = flattened
-            # print(len(flattened_inputs))
-            # print(flattened_inputs[0].shape)
 
-            # batch_inputs = tuple(map(np.array, tuple(zip(*flattened_inputs))))
-            # batch_targets = tuple(map(np.array, tuple(zip(*flattened_targets))))
+            batch_inputs = tuple(map(np.asarray, tuple(zip(*flattened_inputs))))
+            batch_targets = tuple(map(np.asarray, tuple(zip(*flattened_targets))))
 
-            # batch_inputs = tuple(tuple(zip(*flattened_inputs)))
-            # batch_targets = tuple(tuple(zip(*flattened_targets)))
-            batch_inputs, batch_targets = flattened_inputs, flattened_targets
-            # print(batch_inputs[0].shape)
-            # print((batch_size))
-            # print(len(batch_inputs))
-            # print(len(batch_targets))
             yield batch_inputs, batch_targets
             batched_features = list(islice(feature_generator, batch_size))
 
@@ -165,8 +169,7 @@ class DataManager():
 
     # --------------------------------------------------------------------------------------
 
-    def get_test_data_from_file(self, filenames, max_features=None,
-                                max_lengths=None, pad=True, mode="word"):
+    def get_test_data_from_file(self, max_features=None):
         """
         Given a filename or list of filenames, return a generator for producing
         individual features of data ready for use as model test data.
@@ -211,7 +214,6 @@ class DataManager():
             of features in the test set, which can be used to initialize a
             progress bar.
         """
-        logger.info("Getting test data from {}".format(filenames))
 
         self.dataset_type.load_test_features_from_file()
         if max_features:
