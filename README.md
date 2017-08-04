@@ -32,12 +32,13 @@ Why not [Keras](https://github.com/fchollet/keras/)?
 
 
 ### How to clone this repo
-`git clone --recursive --jobs 8`
+`git clone --recursive --jobs 8 https://github.com/Mageswaran1989/dhira`
 
-######**add submodule and define the master branch as the one you want to track**
+**Sub modules notes:**
+- Add submodule and define the master branch as the one you want to track  
 `git submodule add -b master [URL to Git repo]`     
 `git submodule init` 
 
-######**update your submodule --remote fetches new commits in the submodules**
-######**and updates the working tree to the commit described by the branch**
-`git submodule update --remote`
+- update your submodule --remote fetches new commits in the submodules 
+and updates the working tree to the commit described by the branch  
+ `git submodule update --remote`
