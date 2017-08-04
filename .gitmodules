@@ -6,3 +6,15 @@
 	path = exploration/ml/machine-learning
 	url = https://github.com/udacity/machine-learning
 	branch = master
+[submodule "exploration/maths/staistics/thinkstats2/ThinkStats2"]
+	path = exploration/maths/staistics/thinkstats2/ThinkStats2
+	url = https://github.com/AllenDowney/ThinkStats2
+	branch = master
+[submodule "exploration/maths/linear_algebra/MIT_OCW_Linear_Algebra_18_06"]
+	path = exploration/maths/linear_algebra/MIT_OCW_Linear_Algebra_18_06
+	url = https://github.com/juanklopper/MIT_OCW_Linear_Algebra_18_06
+	branch = master
+[submodule "exploration/maths/calculus/Differential-Equations"]
+	path = exploration/maths/calculus/Differential-Equations
+	url = https://github.com/juanklopper/Differential-Equations
+	branch = master
