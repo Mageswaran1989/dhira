@@ -50,6 +50,8 @@ class BaseTFModel:
         self._train_summary_writer = None
         self._val_summary_writer = None
 
+        self._is_graph_build = False
+
         #Misc Varaibles
         #Directory setup
         self._run_id = run_id
@@ -108,7 +110,7 @@ class BaseTFModel:
         :param seed: int, optional (default=0)
              The graph-level seed to use when building the graph.
         """
-
+        self._is_graph_build = True
         self.log_params() #Small trick to get all the variables and log them
         with tf.device("/gpu:0"):
             logger.info("Building graph...")
@@ -322,6 +324,7 @@ class BaseTFModel:
         """
 
         if self.y_pred is None or self.loss is None or self.accuracy is None or self.training_op is None: #Training optimization
+
             raise NotImplementedError
 
         global_step = 0
@@ -483,6 +486,11 @@ class BaseTFModel:
             The number of features per batch produced by the generator.
         """
         # model_load_dir = model_load_dir + '/checkpoint'
+
+        if not self._is_graph_build:
+            logger.info('Initializing the model for prediction...')
+            self.build_graph()
+
         gpu_options = tf.GPUOptions(allow_growth=True)
         sess_config = tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True, log_device_placement=True)
         with tf.Session(config=sess_config) as sess:

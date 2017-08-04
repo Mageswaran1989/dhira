@@ -4,8 +4,9 @@ import itertools
 import numpy as np
 from overrides import overrides
 
-from .feature import TextFeature, IndexedFeature
-from .feature_word import IndexedFeatureWord
+from dhira.data.features.text_feature import TextFeature
+from dhira.data.features.indexed_feature import IndexedFeature
+from dhira.data.features.indexed_feature import IndexedFeatureWord
 
 
 class PairFeature(TextFeature):
@@ -33,8 +34,8 @@ class PairFeature(TextFeature):
 
     def __init__(self, first_sentence, second_sentence, label):
         super(PairFeature, self).__init__(label)
-        self.first_sentence_str = first_sentence
-        self.second_sentence_str = second_sentence
+        # self.first_sentence_str = first_sentence
+        # self.second_sentence_str = second_sentence
         # Tokenize the string representations of the first
         # and second sentence into words and characters
 
@@ -50,9 +51,9 @@ class PairFeature(TextFeature):
             "characters": list(map(list, second_sentence_words))
         }
 
-    def __str__(self):
-        return ('PairFeature(' + self.first_sentence_str + ', ' +
-                self.second_sentence_str + ', ' + str(self.label) + ')')
+    def __str__(self): #TODO does this make sense?
+        return ('PairFeature(' + self.first_sentence_tokenized + ', ' +
+                self.second_sentence_tokenized + ', ' + str(self.label) + ')')
 
     @overrides
     def words(self):
@@ -83,10 +84,11 @@ class PairFeature(TextFeature):
         indexed_second_sentence = [IndexedFeatureWord(word, word_characters) for
                                    word, word_characters in zip(indexed_second_words,
                                                                 indexed_second_chars)]
-
         return IndexedPairFeature(indexed_first_sentence,
                                   indexed_second_sentence,
                                   self.label_mapping[self.label])
+
+
 
     @classmethod
     def read_from_line(cls, line):
@@ -140,8 +142,8 @@ class IndexedPairFeature(IndexedFeature):
     """
     def __init__(self, first_sentence_indices, second_sentence_indices, label):
         super(IndexedPairFeature, self).__init__(label)
-        self.first_sentence_indices = first_sentence_indices
-        self.second_sentence_indices = second_sentence_indices
+        self.first_sentence_indices: list(IndexedFeatureWord) = first_sentence_indices
+        self.second_sentence_indices: list(IndexedFeatureWord) = second_sentence_indices
 
     def get_int_word_indices(self):
         """
@@ -153,8 +155,8 @@ class IndexedPairFeature(IndexedFeature):
             in the first sentence and the second list refers to the indices of the words
             in the second sentence.
         """
-        first_sentence_word_indices = [idxd_word.word_index for idxd_word in
-                                       self.first_sentence_indices]
+        first_sentence_word_indices = [idxd_word.word_index
+                                       for idxd_word in self.first_sentence_indices]
         second_sentence_word_indices = [idxd_word.word_index for idxd_word in
                                         self.second_sentence_indices]
         return (first_sentence_word_indices, second_sentence_word_indices)
@@ -255,6 +257,55 @@ class IndexedPairFeature(IndexedFeature):
 
     @overrides
     def as_training_data(self, mode="word"):
+        """
+        Transforms the instance into a collection of NumPy
+        arrays suitable for use as training data in the model.
+
+        :param mode: str, optional (default="word")
+            String describing whether to return the word-level representations,
+            character-level representations, or both. One of "word",
+            "character", or "word+character"
+
+        :return data_tuple: tuple
+            The outer tuple has two elements.
+            The first element of this outer tuple is another tuple, with the
+            "training data". In this case, this is the NumPy arrays of the
+            first and second sentence. The second element of the outer tuple is
+            a NumPy array with the label.
+        """
+        if self.label is None:
+            raise ValueError("self.label is None so this is a test example. "
+                             "You cannot call as_training_data on it.")
+        if mode not in set(["word", "character", "word+character"]):
+            raise ValueError("Input mode was {}, expected \"word\","
+                             "\"character\", or \"word+character\"")
+        if mode == "word" or mode == "word+character":
+            first_sentence_word_array = np.asarray([word.word_index for word
+                                                    in self.first_sentence_indices],
+                                                   dtype="int32")
+            second_sentence_word_array = np.asarray([word.word_index for word
+                                                     in self.second_sentence_indices],
+                                                    dtype="int32")
+        if mode == "character" or mode == "word+character":
+            first_sentence_char_matrix = np.asarray([word.char_indices for word
+                                                     in self.first_sentence_indices],
+                                                    dtype="int32")
+            second_sentence_char_matrix = np.asarray([word.char_indices for word
+                                                      in self.second_sentence_indices],
+                                                     dtype="int32")
+        if mode == "character":
+            return ((first_sentence_char_matrix, second_sentence_char_matrix),
+                    (np.asarray(self.label),))
+        if mode == "word":
+            return ((first_sentence_word_array, second_sentence_word_array),
+                    (np.asarray(self.label),))
+        if mode == "word+character":
+            return ((first_sentence_word_array, first_sentence_char_matrix,
+                     second_sentence_word_array, second_sentence_char_matrix),
+                    (np.asarray(self.label),))
+
+    @overrides
+    def as_validation_data(self, mode="word"):
         """
         Transforms the instance into a collection of NumPy
         arrays suitable for use as training data in the model.

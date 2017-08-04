@@ -6,7 +6,7 @@ from dhira.data.data_indexer import DataIndexer
 from dhira.data.dataset import Dataset
 from dhira.data.dataset import IndexedDataset
 from dhira.data.dataset import TextDataset
-from dhira.data.features.feature_word import IndexedFeatureWord
+from dhira.data.features.indexed_feature import  IndexedFeatureWord
 from dhira.data.features.pair_feature import IndexedPairFeature
 from dhira.data.features.pair_feature import PairFeature
 

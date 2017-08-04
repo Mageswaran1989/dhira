@@ -3,8 +3,8 @@ import logging
 import codecs
 import itertools
 
-from dhira.data.features.feature import Feature
-from tqdm import tqdm
+from dhira.data.features.feature_base import FeatureBase
+from tqdm import tqdm_notebook as tqdm
 from dhira.data.utils.pickle_data import PickleData
 from dhira.data.download.downloader import Downloader
 from sklearn import datasets

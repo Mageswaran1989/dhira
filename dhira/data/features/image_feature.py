@@ -1,7 +1,7 @@
 import numpy as np
-from .feature import Feature
+from .feature_base import FeatureBase
 
-class ImageFeature(Feature):
+class ImageFeature(FeatureBase):
     """
     Class that encapsulates an image feature
     """

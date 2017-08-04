@@ -4,36 +4,52 @@ from overrides import overrides
 import tensorflow as tf
 from tensorflow.contrib.rnn import LSTMCell
 
+from ..base_tf_model import BaseTFModel
 from dhira.tf.models.base_tf_model import BaseTFModel
 from dhira.tf.models.util.rnn import SwitchableDropoutWrapper, last_relevant_output, mean_pool
+
 
 logger = logging.getLogger(__name__)
 
 
-class SiameseBiLSTM(BaseTFModel):
+class SiameseMatchingBiLSTM(BaseTFModel):
     """
-    Create a model based off of "Siamese Recurrent Architectures for Learning
-    Sentence Similarity" at AAAI '16. The model is super simple: just encode
-    both sentences with a LSTM, and then use the function
-    exp(-||sentence_one - sentence_two||) to get a probability that the
-    two sentences are semantically identical.
+    Create a model based off of the baseline (no inner-attention) in
+    "Learning Natural Language Inference using Bidirectional LSTM model
+    and Inner-Attention" (https://arxiv.org/abs/1605.09090).
 
-    :param mode: str
-        One of [train|predict], to indicate what you want the model to do.
+    The model is super simple: just encode
+    both sentences with a LSTM, and take the mean pool over the timesteps
+    as the sentence representation. Then, create a vector with the
+    by concatenating (||) the following:
+    sentence1|sentence1-sentence2|sentence1*sentence2|sentence2
+
+    Lastly, run this vector through a dense layer to (relu activation)
+    to get the logits, which are then softmaxed to get a probability
+    distribution [is_not_duplicate, is_duplicate].
+
+    The input config is an argarse Namespace storing a variety of configuration
+    values that are necessary to build the graph. The keys we expect
+    in this Namespace are outlined below.
+
+    Parameters
+    ----------
+    mode: str
+        One of {train|predict}, to indicate what you want the model to do.
         If you pick "predict", then you must also supply the path to a
-        pretrained model and DataIndexer to load to the ``predict`` method.
+        pretrained model and DataIndexer to load.
 
-    :param word_vocab_size: int
+    word_vocab_size: int
         The number of unique tokens in the dataset, plus the UNK and padding
         tokens. Alternatively, the highest index assigned to any word, +1.
         This is used by the model to figure out the dimensionality of the
         embedding matrix.
 
-    :param word_embedding_dim: int
+    word_embedding_dim: int
         The length of a word embedding. This is used by
         the model to figure out the dimensionality of the embedding matrix.
 
-    :param word_embedding_matrix: numpy array, optional if predicting
+    word_embedding_matrix: numpy array, optional if predicting
         A numpy array of shape (word_vocab_size, word_emb_dim).
         word_embedding_matrix[index] should represent the word vector for
         that particular word index. This is used to initialize the
@@ -41,25 +57,19 @@ class SiameseBiLSTM(BaseTFModel):
         since we assume that the word embeddings variable will be loaded
         with the model.
 
-    :param fine_tune_embeddings: boolean
+    fine_tune_embeddings: boolean
         If true, sets the embeddings to be trainable.
 
-    :param rnn_hidden_size: int
+    rnn_hidden_size: int
         The output dimension of the RNN encoder. Note that this model uses a
         bidirectional LSTM, so the actual sentence vectors will be
         of length 2*rnn_hidden_size.
 
-    :param share_encoder_weights: boolean
+    share_encoder_weights: boolean
         Whether to use the same encoder on both input sentnces (thus
         sharing weights), or a different one for each sentence.
 
-    :param rnn_output_mode: str
-        How to calculate the final sentence representation from the RNN
-        outputs. mean pool" indicates that the outputs will be averaged (with
-        respect to padding), and "last" indicates that the last
-        relevant output will be used as the sentence representation.
-
-    :param output_keep_prob: float
+    output_keep_prob: float
         The probability of keeping an RNN outputs to keep, as opposed
         to dropping it out.
     """
@@ -70,16 +80,16 @@ class SiameseBiLSTM(BaseTFModel):
                  save_dir,
                  log_dir,
                  run_id,
-                 word_vocab_size, 
-                 word_embedding_dim, 
-                 word_embedding_matrix, 
-                 fine_tune_embeddings, 
+                 word_vocab_size,
+                 word_embedding_dim,
+                 word_embedding_matrix,
+                 fine_tune_embeddings,
                  share_encoder_weights,
                  rnn_output_mode,
                  output_keep_prob,
                  rnn_hidden_size,
-                 name='SiameseBiLSTM'):
-        super(SiameseBiLSTM, self).__init__(name=name,
+                 name='SiameseMatchingBiLSTM'):
+        super(SiameseMatchingBiLSTM, self).__init__(name=name,
                                               mode=mode,
                                               run_id=run_id,
                                               save_dir=save_dir,
@@ -97,7 +107,6 @@ class SiameseBiLSTM(BaseTFModel):
         self.output_keep_prob = output_keep_prob
 
 
-    @overrides
     def _create_placeholders(self):
         """
         Create the placeholders for use in the model.
@@ -114,7 +123,6 @@ class SiameseBiLSTM(BaseTFModel):
         self.sentence_two = tf.placeholder("int32",
                                            [None, None],
                                            name="sentence_two")
-
         # Shape: (batch_size, 2)
         # The true labels, encoded as a one-hot vector. So
         # [1, 0] indicates not duplicate, [0, 1] indicates duplicate.
@@ -125,11 +133,10 @@ class SiameseBiLSTM(BaseTFModel):
         # A boolean that encodes whether we are training or evaluating
         self.is_train = tf.placeholder('bool', [], name='is_train')
 
-    @overrides
     def _build_forward(self):
         """
-        Using the values in the config passed to the SiameseBiLSTM object
-        on creation, build the forward pass of the computation graph.
+        Using the config passed to the SiameseMatchingBiLSTM object on
+        creation, build the forward pass of the computation graph.
         """
         # A mask over the word indices in the sentence, indicating
         # which indices are padding and which are words.
@@ -149,10 +156,10 @@ class SiameseBiLSTM(BaseTFModel):
         word_embedding_matrix = self.word_embedding_matrix
         fine_tune_embeddings = self.fine_tune_embeddings
 
-        with tf.variable_scope("embeddings"), tf.device('/cpu:0'):
+        with tf.variable_scope("embeddings"):
             with tf.variable_scope("embedding_var"), tf.device("/cpu:0"):
                 if self.mode == "train":
-                    # Load the word embedding matrix that was passed in
+                    # Load the word embedding matrix from the config,
                     # since we are training
                     word_emb_mat = tf.get_variable(
                         "word_emb_mat",
@@ -171,7 +178,6 @@ class SiameseBiLSTM(BaseTFModel):
                                                    dtype="float",
                                                    trainable=fine_tune_embeddings)
 
-        with tf.variable_scope("embeddings"), tf.device('/gpu:0'):
             with tf.variable_scope("word_embeddings"):
                 # Shape: (batch_size, num_sentence_words, embedding_dim)
                 word_embedded_sentence_one = tf.nn.embedding_lookup(
@@ -183,7 +189,6 @@ class SiameseBiLSTM(BaseTFModel):
                     self.sentence_two)
 
         rnn_hidden_size = self.rnn_hidden_size
-        rnn_output_mode = self.rnn_output_mode
         output_keep_prob = self.output_keep_prob
         rnn_cell_fw_one = LSTMCell(rnn_hidden_size, state_is_tuple=True)
         d_rnn_cell_fw_one = SwitchableDropoutWrapper(rnn_cell_fw_one,
@@ -233,56 +238,45 @@ class SiameseBiLSTM(BaseTFModel):
                     scope="encoded_sentence_two")
 
             # Now, combine the fw_output and bw_output for the
-            # first and second sentence LSTM outputs
-            if rnn_output_mode == "mean_pool":
-                # Mean pool the forward and backward RNN outputs
-                pooled_fw_output_one = mean_pool(fw_output_one,
-                                                 sentence_one_len)
-                pooled_bw_output_one = mean_pool(bw_output_one,
-                                                 sentence_one_len)
-                pooled_fw_output_two = mean_pool(fw_output_two,
-                                                 sentence_two_len)
-                pooled_bw_output_two = mean_pool(bw_output_two,
-                                                 sentence_two_len)
-                # Shape: (batch_size, 2*rnn_hidden_size)
-                encoded_sentence_one = tf.concat([pooled_fw_output_one,
-                                                  pooled_bw_output_one], 1)
-                encoded_sentence_two = tf.concat([pooled_fw_output_two,
-                                                  pooled_bw_output_two], 1)
-            elif rnn_output_mode == "last":
-                # Get the last unmasked output from the RNN
-                last_fw_output_one = last_relevant_output(fw_output_one,
-                                                          sentence_one_len)
-                last_bw_output_one = last_relevant_output(bw_output_one,
-                                                          sentence_one_len)
-                last_fw_output_two = last_relevant_output(fw_output_two,
-                                                          sentence_two_len)
-                last_bw_output_two = last_relevant_output(bw_output_two,
-                                                          sentence_two_len)
-                # Shape: (batch_size, 2*rnn_hidden_size)
-                encoded_sentence_one = tf.concat([last_fw_output_one,
-                                                  last_bw_output_one], 1)
-                encoded_sentence_two = tf.concat([last_fw_output_two,
-                                                  last_bw_output_two], 1)
-            else:
-                raise ValueError("Got an unexpected value {} for "
-                                 "rnn_output_mode, expected one of "
-                                 "[mean_pool, last]")
+            # first and second sentence LSTM outputs by mean pooling
+            pooled_fw_output_one = mean_pool(fw_output_one,
+                                             sentence_one_len)
+            pooled_bw_output_one = mean_pool(bw_output_one,
+                                             sentence_one_len)
+            pooled_fw_output_two = mean_pool(fw_output_two,
+                                             sentence_two_len)
+            pooled_bw_output_two = mean_pool(bw_output_two,
+                                             sentence_two_len)
+            # Shape: (batch_size, 2*rnn_hidden_size)
+            encoded_sentence_one = tf.concat([pooled_fw_output_one,
+                                              pooled_bw_output_one], 1)
+            encoded_sentence_two = tf.concat([pooled_fw_output_two,
+                                              pooled_bw_output_two], 1)
+
+        # Sentence matching layer
+        with tf.name_scope("match_sentences"):
+            sentence_difference = encoded_sentence_one - encoded_sentence_two
+            sentence_product = encoded_sentence_one * encoded_sentence_two
+            # Shape: (batch_size, 4 * 2*rnn_hidden_size)
+            matching_vector = tf.concat([encoded_sentence_one, sentence_product,
+                                         sentence_difference, encoded_sentence_two], 1)
+        # Nonlinear projection to 2 dimensional class probabilities
+        with tf.variable_scope("project_matching_vector"):
+            # Shape: (batch_size, 2)
+            projection = tf.layers.dense(matching_vector, 2, tf.nn.relu,
+                                         name="matching_vector_projection")
 
         with tf.name_scope("loss"):
-            # Use the exponential of the negative L1 distance
-            # between the two encoded sentences to get an output
-            # distribution over labels.
+            # Get the predicted class probabilities
             # Shape: (batch_size, 2)
-            self.y_pred = self._l1_similarity(encoded_sentence_one,
-                                              encoded_sentence_two)
-            # Manually calculating cross-entropy, since we output
-            # probabilities and can't use softmax_cross_entropy_with_logits
-            # Add epsilon to the probabilities in order to prevent log(0)
+            self.y_pred = tf.nn.softmax(projection, name="softmax_probabilities")
+            # Use softmax_cross_entropy_with_logits to calculate xentropy.
+            # It's unideal to do the softmax twice, but I prefer the numerical
+            # stability of the tf function.
             self.loss = tf.reduce_mean(
-                -tf.reduce_sum(tf.cast(self.y_true, "float") *
-                               tf.log(self.y_pred),
-                               axis=1))
+                tf.nn.softmax_cross_entropy_with_logits(labels=self.y_true,
+                                                        logits=projection,
+                                                        name="xentropy_loss"))
 
         with tf.name_scope("accuracy"):
             # Get the correct predictions.
@@ -297,23 +291,17 @@ class SiameseBiLSTM(BaseTFModel):
 
         with tf.name_scope("train"):
             optimizer = tf.train.AdamOptimizer()
-            with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-                self.gradient_and_variance = optimizer.compute_gradients(self.loss)
-                self.training_op = optimizer.apply_gradients(self.gradient_and_variance,
-                                                               global_step=self.global_step)
+            self.training_op = optimizer.minimize(self.loss,
+                                                  global_step=self.global_step)
 
         # with tf.name_scope("train_summaries"):
-            # Add the loss and the accuracy to the tensorboard summary
-            # tf.summary.scalar("loss", self.loss)
-            # tf.summary.scalar("accuracy", self.accuracy)
-            # self.summary_op = tf.summary.merge_all()
+        #     # Add the loss and the accuracy to the tensorboard summary
+        #     tf.summary.scalar("loss", self.loss)
+        #     tf.summary.scalar("accuracy", self.accuracy)
+        #     self.summary_op = tf.summary.merge_all()
 
         self.add_scalar_summary(self.loss)
         self.add_scalar_summary(self.accuracy)
-
-    @overrides
-    def _evaluate_model_parameters(self, session):
-        logger.info("No model specific evaluations")
 
     @overrides
     def _get_train_feed_dict(self, batch):
@@ -340,56 +328,3 @@ class SiameseBiLSTM(BaseTFModel):
                      self.sentence_two: inputs[1],
                      self.is_train: False}
         return feed_dict
-
-    def _l1_similarity(self, sentence_one, sentence_two):
-        """
-        Given a pair of encoded sentences (vectors), return a probability
-        distribution on whether they are duplicates are not with:
-        exp(-||sentence_one - sentence_two||)
-
-        :param sentence_one: Tensor
-            A tensor of shape (batch_size, 2*rnn_hidden_size) representing
-            the encoded sentence_ones to use in the probability calculation.
-
-        :param sentence_one: Tensor
-            A tensor of shape (batch_size, 2*rnn_hidden_size) representing
-            the encoded sentence_twos to use in the probability calculation.
-
-        :returns class_probabilities: Tensor
-            A tensor of shape (batch_size, 2), represnting the probability
-            that a pair of sentences are duplicates as
-            [is_not_duplicate, is_duplicate].
-        """
-        with tf.name_scope("l1_similarity"):
-            # Take the L1 norm of the two vectors.
-            # Shape: (batch_size, 2*rnn_hidden_size)
-            l1_distance = tf.abs(sentence_one - sentence_two)
-
-            # Take the sum for each sentence pair
-            # Shape: (batch_size, 1)
-            summed_l1_distance = tf.reduce_sum(l1_distance, axis=1,
-                                               keep_dims=True)
-
-            # Exponentiate the negative summed L1 distance to get the
-            # positive-class probability.
-            # Shape: (batch_size, 1)
-            positive_class_probs = tf.exp(-summed_l1_distance)
-
-            # Get the negative class probabilities by subtracting
-            # the positive class probabilities from 1.
-            # Shape: (batch_size, 1)
-            negative_class_probs = 1 - positive_class_probs
-
-            # Concatenate the positive and negative class probabilities
-            # Shape: (batch_size, 2)
-            class_probabilities = tf.concat([negative_class_probs,
-                                             positive_class_probs], 1)
-
-            # if class_probabilities has 0's, then taking the log of it
-            # (e.g. for cross-entropy loss) will cause NaNs. So we add
-            # epsilon and renormalize by the sum of the vector.
-            safe_class_probabilities = class_probabilities + 1e-08
-            safe_class_probabilities /= tf.reduce_sum(safe_class_probabilities,
-                                                      axis=1,
-                                                      keep_dims=True)
-            return safe_class_probabilities

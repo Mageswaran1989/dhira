@@ -1,0 +1,8 @@
+[submodule "exploration/keras/deep-learning-keras-tensorflow"]
+	path = exploration/keras/deep-learning-keras-tensorflow
+	url = https://github.com/leriomaggio/deep-learning-keras-tensorflow
+	branch = master
+[submodule "exploration/ml/machine-learning"]
+	path = exploration/ml/machine-learning
+	url = https://github.com/udacity/machine-learning
+	branch = master

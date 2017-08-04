@@ -21,6 +21,34 @@ class EmbeddingManager(PickleData):
         self.embedding_pickle_file = 'embedding_matrix.p'
 
     @staticmethod
+    def get_spacy_embedding_matrix(nlp, data_indexer):
+        index_to_word = data_indexer.get_index_to_word()['words']
+        def spacy_word2vec(word, nlp):
+            lex = nlp(word)
+            if lex.has_vector:
+                return lex.vector
+            else:
+                return nlp.vocab[0].vector  # return all zeros for Out of vocab
+
+        def get_embedding_matrix(nlp, index_to_word):
+            vocab_size = len(index_to_word)
+            vectors = np.ndarray((vocab_size, nlp.vocab.vectors_length), dtype='float32')
+            for i, word in index_to_word.items():
+                vectors[i] = spacy_word2vec(word, nlp)
+            return vectors
+
+        # if not self.check_pickle_exists(self.embedding_pickle_file):
+        #     self.write_pickle(embedding_matrix, self.embedding_pickle_file)
+        # else:
+        # embedding_matrix = self.read_pickle(self.embedding_pickle_file)
+        #
+        # print('==========>', embedding_matrix.shape)
+        #
+        # return embedding_matrix
+
+        return get_embedding_matrix(nlp, index_to_word)
+
+    @staticmethod
     def initialize_random_matrix(shape, scale=0.05, seed=0):
         if len(shape) != 2:
             raise ValueError("Shape of embedding matrix must be 2D, "

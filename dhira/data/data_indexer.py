@@ -1,8 +1,6 @@
 from collections import Counter, defaultdict
 import logging
 
-from .dataset import Dataset
-
 import tqdm
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -177,3 +175,6 @@ class DataIndexer:
             The number of words added to this DataIndexer.
         """
         return len(self.word_indices[namespace])
+
+    def get_index_to_word(self):
+        return self.reverse_word_indices

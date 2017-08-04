@@ -1,4 +1,4 @@
-from .feature import TextFeature
+from .feature_base import TextFeature
 from overrides import overrides
 import numpy as np
 

@@ -2,7 +2,7 @@ import logging
 from itertools import islice
 import random
 import numpy as np
-
+from dhira.data.features.feature_base import FeatureBase
 logger = logging.getLogger(__name__)
 
 class DataManager():
@@ -15,9 +15,33 @@ class DataManager():
     def __init__(self, dataset, pickle_directory='dhira_pickle_folder'):
         # self.data_indexer = DataIndexer()
         self.dataset_type = dataset
-        self.data_indexer_fitted = False
+        # self.data_indexer_fitted = False TOD shoudl we move data_indexr to data_manager
         self.training_data_max_lengths = {}
         self.pickle_directory = pickle_directory
+
+    @staticmethod
+    def to_batch(features):
+        """
+        Converts custom/user created features from 'FeatureBase' derived class to batches
+        :param features: List of features 
+        :return: 
+        """
+        if not isinstance(features, list):
+            logger.info('features should be a list of `FeatureBase` type')
+            features = [features]
+        if not isinstance(features[0], FeatureBase):
+            raise TypeError('features in the list are not of base type `FeatureBase`')
+
+        features = [feature.as_training_data() for feature in features]
+
+        flattened = ([ins[0] for ins in features],
+                     [ins[1] for ins in features])
+        flattened_inputs, flattened_targets = flattened
+
+        batch_inputs = tuple(map(np.asarray, tuple(zip(*flattened_inputs))))
+        batch_targets = tuple(map(np.asarray, tuple(zip(*flattened_targets))))
+        single_feature = batch_inputs, batch_targets
+        return single_feature
 
     @staticmethod
     def get_random_feature(get_feature_generator, total_num_features):

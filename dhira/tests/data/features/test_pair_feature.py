@@ -1,7 +1,7 @@
 from numpy.testing import assert_allclose
 import numpy as np
 from dhira.data.data_indexer import DataIndexer
-from dhira.data.features.feature_word import IndexedFeatureWord
+from dhira.data.features.indexed_feature import  IndexedFeatureWord
 from dhira.data.features.pair_feature import IndexedPairFeature
 from dhira.data.features.pair_feature import PairFeature
 
