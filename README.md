@@ -6,12 +6,12 @@ Following git repo "https://github.com/nelson-liu/paraphrase-id-tensorflow", is 
 
 Where I have made changes like using spaCy as NLP backend. 
 
-Why not [Keras](https://github.com/fchollet/keras/)?
-- Simple! Keras is a birds view from a 10000ft!!!
+## Why dhīra?
+- Why not [Keras](https://github.com/fchollet/keras/)? Simple! Keras is a birds view from a 10000ft!!!
 - Abstract common TensorFlow environment setup and concentrate more on modeling from academic papers
 - Create custom Dataset classes and reuse them across models
 - To write custom models from scratch and understand the model from an Enginering perspective
-
+- Explore the possibility to merge Tensorflow and Embedded world from where I started!
 
 ### How to run?
 - Check example folder
