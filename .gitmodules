@@ -18,3 +18,7 @@
 	path = exploration/maths/calculus/Differential-Equations
 	url = https://github.com/juanklopper/Differential-Equations
 	branch = master
+[submodule "exploration/cookbooks/tensorflow_cookbook"]
+	path = exploration/cookbooks/tensorflow_cookbook
+	url = https://github.com/nfmcclure/tensorflow_cookbook
+	branch = master
