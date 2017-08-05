@@ -20,6 +20,8 @@ Where I have made changes like using spaCy as NLP backend.
 
 `exploration/` folder contains my reference materials and some of the best `Git repos` out there on:
 - Cookbooks
+    - Python Pandas
+        - https://github.com/jvns/pandas-cookbook
     - TensorFlow
         - https://github.com/nfmcclure/tensorflow_cookbook
 - Machine Learning

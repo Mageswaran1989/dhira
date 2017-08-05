@@ -22,3 +22,7 @@
 	path = exploration/cookbooks/tensorflow_cookbook
 	url = https://github.com/nfmcclure/tensorflow_cookbook
 	branch = master
+[submodule "exploration/cookbooks/pandas-cookbook"]
+	path = exploration/cookbooks/pandas-cookbook
+	url = https://github.com/jvns/pandas-cookbook
+	branch = master
