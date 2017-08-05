@@ -18,21 +18,32 @@ Where I have made changes like using spaCy as NLP backend.
 
 ## Explorations
 
-`exploration/` folder contains my reference materials and some of the best `Git repos` out there on: 
+`exploration/` folder contains my reference materials and some of the best `Git repos` out there on:
+- Cookbooks
+    - TensorFlow
+        - https://github.com/nfmcclure/tensorflow_cookbook
 - Machine Learning
     - Udacity
         - https://github.com/udacity/machine-learning
 - Deep Learning
     - Keras
         - https://github.com/leriomaggio/deep-learning-keras-tensorflow
-- Maths for Engineers  
+- Maths for Engineers 
+    - Linear Algebra
+        - https://github.com/juanklopper/MIT_OCW_Linear_Algebra_18_06
+    - Statistics
+        - https://github.com/AllenDowney/ThinkStats2
+    - Diffrential Equations
+        - https://github.com/juanklopper/Differential-Equations
 
 ### [Awesome DeepLearning](https://github.com/ChristosChristofidis/awesome-deep-learning)
 ### [Awesome TensorFlow](https://github.com/jtoy/awesome-tensorflow)
+### [A gallery of interesting Jupyter Notebooks](https://github.com/jupyter/jupyter/wiki/A-gallery-of-interesting-Jupyter-Notebooks)  
 
-
-### How to clone this repo
+### How to clone this repo?
 `git clone --recursive --jobs 8 https://github.com/Mageswaran1989/dhira`
+`cd dhira/`
+`git pull --recurse-submodules`
 
 **Sub modules notes:**
 
@@ -43,8 +54,12 @@ git submodule init
 
 #update your submodule --remote fetches new commits in the submodules 
 # and updates the working tree to the commit described by the branch  
+# pull all changes for the submodules
 git submodule update --remote
- 
+ ---or---
+# pull all changes in the repo including changes in the submodules
+git pull --recurse-submodules
+
 
 # update submodule in the master branch
 # skip this if you use --recurse-submodules
