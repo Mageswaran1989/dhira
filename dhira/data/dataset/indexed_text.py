@@ -1,7 +1,8 @@
 import logging
+
 from tqdm import tqdm_notebook as tqdm
 
-from dhira.data.dataset.dataset_base import Dataset
+from dhira.data.dataset.internal.dataset_base import Dataset
 from dhira.data.dataset.text import TextDataset
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -144,7 +145,7 @@ class IndexedDataset(Dataset):
             logger.info("Padding lengths to length: {}".format(str(max_lengths_to_use)))
         return max_lengths_to_use
 
-    def load_train_features_from_file(self):
+    def load_train_features(self):
 
         if self.data_indexer_fitted:
             raise ValueError("You have already called get_train_data for this "
@@ -173,7 +174,7 @@ class IndexedDataset(Dataset):
 
             self.training_data_max_lengths = self.max_lengths_to_use(self.train_features)
 
-    def load_val_features_from_file(self):
+    def load_val_features(self):
         logger.info("Getting validation data from {}".format(self.val_files))
 
         if not self.check_pickle_exists(self.val_pickle_file):
@@ -188,7 +189,7 @@ class IndexedDataset(Dataset):
             logger.info("Reusing the pickle file {}.".format(self.val_features))
             self.val_features = self.read_pickle(self.val_pickle_file)
 
-    def load_test_features_from_file(self):
+    def load_test_features(self):
         logger.info("Getting test data from {}".format(self.test_files))
 
         if not self.check_pickle_exists(self.test_pickle_file):

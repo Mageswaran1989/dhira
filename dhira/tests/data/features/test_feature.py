@@ -1,7 +1,8 @@
-from dhira.data.data_indexer import DataIndexer
-from dhira.data.features.feature_base import IndexedFeature
-from dhira.data.features.feature_base import TextFeature
 from dhira.data.features.pair_feature import PairFeature
+
+from dhira.data.data_indexer import DataIndexer
+from dhira.data.features.internal.feature_base import IndexedFeature
+from dhira.data.features.internal.feature_base import TextFeature
 from dhira.data.nlp import Tokenizer
 from dhira.tests.common.test_case import DuplicateTestCase
 

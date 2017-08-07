@@ -21,6 +21,16 @@ class EmbeddingManager(PickleData):
         self.embedding_pickle_file = 'embedding_matrix.p'
 
     @staticmethod
+    def get_spacy_deafult_embedding_matrix(nlp):
+        vocab = nlp.vocab
+        max_rank = int(max(lex.rank for lex in vocab if lex.has_vector))
+        vectors = np.ndarray((max_rank + 1, vocab.vectors_length), dtype='float32')
+        for lex in vocab:
+            if lex.has_vector:
+                vectors[lex.rank] = lex.vector
+        return vectors
+
+    @staticmethod
     def get_spacy_embedding_matrix(nlp, data_indexer):
         index_to_word = data_indexer.get_index_to_word()['words']
         def spacy_word2vec(word, nlp):

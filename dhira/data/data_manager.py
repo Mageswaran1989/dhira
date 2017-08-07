@@ -1,8 +1,13 @@
 import logging
-from itertools import islice
 import random
+import spacy
+from itertools import islice
 import numpy as np
-from dhira.data.features.feature_base import FeatureBase
+
+from dhira.data.features.internal.feature_base import FeatureBase
+from dhira.data.dataset.text import TextDataset
+from dhira.data.embedding_manager import EmbeddingManager
+
 logger = logging.getLogger(__name__)
 
 class DataManager():
@@ -12,12 +17,16 @@ class DataManager():
     to NumPy arrays).
     """
 
-    def __init__(self, dataset, pickle_directory='dhira_pickle_folder'):
-        # self.data_indexer = DataIndexer()
-        self.dataset_type = dataset
-        # self.data_indexer_fitted = False TOD shoudl we move data_indexr to data_manager
+    def __init__(self, dataset, nlp=None):
+        self.dataset = dataset
         self.training_data_max_lengths = {}
-        self.pickle_directory = pickle_directory
+        self.nlp = nlp
+        self.embedding_matrix = None
+
+        if isinstance(self.dataset, TextDataset):
+            if self.nlp is None:
+                raise RuntimeError("Need spaCy nlp pipeline. eg: spacy.load('en_core_web_md') ")
+            self.dataset.set_nlp_pipelie(self.nlp)
 
     @staticmethod
     def to_batch(features):
@@ -99,7 +108,7 @@ class DataManager():
             yield batch_inputs, batch_targets
             batched_features = list(islice(feature_generator, batch_size))
 
-    def get_train_data_from_file(self, max_features=None):
+    def get_train_data(self, max_features=None):
 
         """
         Given a filename or list of filenames, return a generator for producing
@@ -117,9 +126,6 @@ class DataManager():
         and then converts them to NumPy arrays suitable for training with
         feature.as_training_data. The generator yields one feature at a time,
         represented as tuples of (inputs, labels).
-        :param filenames: : List[str]
-            A collection of filenames to read the specific self.feature_type
-            from, line by line.
         :param max_features: int, default=None
             If not None, the maximum number of features to produce as
             training data. If necessary, we will truncate the dataset.
@@ -134,20 +140,30 @@ class DataManager():
             of features in the train set, which can be used to initialize a
             progress bar.
         """
-        self.dataset_type.load_train_features_from_file()
+        # Call the overloaded function only when the provided data set doesn't load the features by default,
+        # this can happen if the data set decided to postpone the loading by reading the corresponding files
+        if self.dataset.train_features is None:
+            self.dataset.load_train_features()
+
+        if isinstance(self.dataset, TextDataset):
+            self.dataset.fit_data_indexer()
+            self.dataset.index_train_features()
+            self.embedding_matrix = EmbeddingManager.get_spacy_embedding_matrix(self.nlp, self.dataset.data_indexer)
+
+        self.dataset.pickle_train_features()
+
         if max_features:
             logger.info("Truncating the training dataset "
                         "to {} features".format(max_features))
-            self.dataset_type.train_features = self.dataset_type.truncate(self.dataset_type.train_features ,
+            self.dataset.train_features = self.dataset.truncate(self.dataset.train_features ,
                                                                           max_features)
+        training_dataset_size = len(self.dataset.train_features)
 
-        training_dataset_size = len(self.dataset_type.train_features)
-
-        return self.dataset_type.get_train_batch_generator, training_dataset_size
+        return self.dataset.get_train_batch_generator, training_dataset_size
 
     #--------------------------------------------------------------------------------------
 
-    def get_validation_data_from_file(self, max_features=None):
+    def get_validation_data(self, max_features=None):
         """
         Given a filename or list of filenames, return a generator for producing
         individual features of data ready for use as validation data in a
@@ -164,9 +180,7 @@ class DataManager():
         and then converts them to NumPy arrays suitable for training with
         feature.as_validation_data. The generator yields one feature at a time,
         represented as tuples of (inputs, labels).
-        :param filenames: List[str]
-            A collection of filenames to read the specific self.feature_type
-            from, line by line.
+
         :param max_features: int, default=None
             If not None, the maximum number of features to produce as
             training data. If necessary, we will truncate the dataset.
@@ -181,19 +195,28 @@ class DataManager():
             progress bar.
         """
 
-        self.dataset_type.load_val_features_from_file()
+        # Call the overloaded function only when the provided data set doesn't load the features by default,
+        # this can happen if the data set decided to postpone the loading by reading the corresponding files
+        if self.dataset.val_features is None:
+            self.dataset.load_val_features()
+
+        if isinstance(self.dataset, TextDataset):
+            self.dataset.index_val_features()
+
+        self.dataset.pickle_val_features()
+
         if max_features:
             logger.info("Truncating the validation dataset "
                         "to {} features".format(max_features))
-            self.dataset_type.val_features = self.dataset_type.truncate(self.dataset_type.val_features, max_features)
+            self.dataset.val_features = self.dataset.truncate(self.dataset.val_features, max_features)
 
-        validation_dataset_size = len(self.dataset_type.val_features)
+        validation_dataset_size = len(self.dataset.val_features)
 
-        return self.dataset_type.get_validation_batch_generator, validation_dataset_size
+        return self.dataset.get_validation_batch_generator, validation_dataset_size
 
     # --------------------------------------------------------------------------------------
 
-    def get_test_data_from_file(self, max_features=None):
+    def get_test_data(self, max_features=None):
         """
         Given a filename or list of filenames, return a generator for producing
         individual features of data ready for use as model test data.
@@ -209,27 +232,13 @@ class DataManager():
         and then converts them to NumPy arrays suitable for training with
         feature.as_testinging_data. The generator yields one feature at a time,
         represented as tuples of (inputs, labels).
-        :param filenames: List[str]
-            A collection of filenames to read the specific self.feature_type
-            from, line by line.
+
         :param max_features: int, default=None
             If not None, the maximum number of features to produce as
             training data. If necessary, we will truncate the dataset.
             Useful for debugging and making sure things work with small
             amounts of data.
-        :param max_lengths: dict from str to int, default=None
-            If not None, the max length of a sequence in a given dimension.
-            The keys for this dict must be in the same format as
-            the features' get_lengths() function. These are the lengths
-            that the features are padded or truncated to.
-        :param pad: boolean, default=True
-            If True, pads or truncates the features to either the input
-            max_lengths or max_lengths used on the train filenames. If False,
-            no padding or truncation is applied.
-        :param mode: str, optional (default="word")
-            String describing whether to return the word-level representations,
-            character-level representations, or both. One of "word",
-            "character", or "word+character"
+
         :return: output: returns a function to construct a test data generator
             This returns a function that can be called to produce a tuple of
             (feature generator, test_set_size). The feature generator
@@ -239,14 +248,23 @@ class DataManager():
             progress bar.
         """
 
-        self.dataset_type.load_test_features_from_file()
+        # Call the overloaded function only when the provided data set doesn't load the features by default,
+        # this can happen if the data set decided to postpone the loading by reading the corresponding files
+        if self.dataset.test_features is None:
+            self.dataset.load_test_features()
+
+        if isinstance(self.dataset, TextDataset):
+            self.dataset.index_test_features()
+
+        self.dataset.pickle_val_features()
+
         if max_features:
             logger.info("Truncating the training dataset "
                         "to {} features".format(max_features))
-            self.dataset_type.test_features = self.dataset_type.truncate(self.dataset_type.test_features ,
+            self.dataset.test_features = self.dataset.truncate(self.dataset.test_features ,
                                                                           max_features)
 
-        test_dataset_size = len(self.dataset_type.test_features)
+        test_dataset_size = len(self.dataset.test_features)
 
-        return self.dataset_type.get_test_batch_generator, test_dataset_size
+        return self.dataset.get_test_batch_generator, test_dataset_size
 

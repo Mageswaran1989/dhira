@@ -1,10 +1,12 @@
-from dhira.data.dataset.dataset_base import Dataset
-from collections import Counter, defaultdict
 import codecs
 import logging
-import itertools
-from dhira.data.features.glove_feature import GloveFeature
+from collections import Counter, defaultdict
+
 from tqdm import tqdm
+
+from dhira.data.dataset.internal.dataset_base import Dataset
+from dhira.data.features.glove_feature import GloveFeature
+
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 import nltk
 
@@ -170,11 +172,11 @@ class GloveDataset(Dataset):
             if words[0] in self.word_to_id and words[1] in self.word_to_id}
 
 
-    def load_train_features_from_file(self):
+    def load_train_features(self):
         self.train_features = self.read_from_file(self.train_files)
 
-    def load_val_features_from_file(self):
+    def load_val_features(self):
         self.val_features = self.read_from_file(self.val_files)
 
-    def load_test_features_from_file(self):
+    def load_test_features(self):
         raise NotImplementedError

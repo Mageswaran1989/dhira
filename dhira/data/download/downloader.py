@@ -20,12 +20,12 @@ class Downloader:
     def get(url: str, local_file_name: str):
         """
         
-        :param url: URL of rthe file to be downloaded
+        :param url: URL of the file to be downloaded
         :param local_file_name: File path where to be locally to be stored
         :return: 
         """
         if not isfile(local_file_name):
-            with DLProgress(unit='B', unit_scale=True, miniters=1, desc='CIFAR-10 Dataset') as pbar:
+            with DLProgress(unit='B', unit_scale=True, miniters=1, desc=local_file_name +'Dataset') as pbar:
                 urlretrieve(
                     url,
                     local_file_name,
@@ -48,4 +48,4 @@ class Downloader:
                 tar.extractall(path=path_to_extract)
                 tar.close()
 
-        return path_to_extract+'/'+extracted_folder_name
+        return path_to_extract+'/'#+extracted_folder_name

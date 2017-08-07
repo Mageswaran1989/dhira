@@ -1,10 +1,11 @@
-from overrides import overrides
 import csv
-import dhira.data.utils.time as time
 from copy import deepcopy
-from dhira.data.features.text_feature import TextFeature
-from dhira.data.features.indexed_feature import  IndexedFeature
-from dhira.data.data_manager import DataManager
+
+from dhira.data.features.indexed_feature import IndexedFeature
+from overrides import overrides
+
+from dhira.data.features.internal.text_feature import TextFeature
+
 
 class QuoraFeature(TextFeature):
 
@@ -16,10 +17,6 @@ class QuoraFeature(TextFeature):
         self.question2_tokenized = {
             "words" : question2_tokens
         }
-
-    @staticmethod
-    def get_tokens(sentence, nlp):
-        return [tok.text for tok in nlp(sentence)]
 
     @staticmethod
     def read_from_line(line, nlp):
@@ -48,8 +45,8 @@ class QuoraFeature(TextFeature):
         else:
             raise RuntimeError("Unrecognized line format: " + line)
 
-        first_sentence_token = QuoraFeature.get_tokens(first_sentence, nlp)
-        second_sentence_token = QuoraFeature.get_tokens(second_sentence, nlp)
+        first_sentence_token = QuoraFeature.tokenize(first_sentence, nlp)
+        second_sentence_token = QuoraFeature.tokenize(second_sentence, nlp)
         return QuoraFeature(first_sentence_token, second_sentence_token, label)
 
     @overrides
@@ -62,27 +59,21 @@ class QuoraFeature(TextFeature):
             words[namespace].extend(second_sentence_words[namespace])
         return words
 
-    #TODO Make generic
-    def index_text(self, tokenized_sentence, data_indexer):
-        word_indexed_text = [data_indexer.get_word_index(word, namespace="words")
-                             for word in tokenized_sentence["words"]]
-        return word_indexed_text
-
-
     @overrides
     def to_indexed_feature(self, data_indexer):
-        indexed_first_words = self.index_text(
+        indexed_first_words = self._index_text(
             self.question1_tokenized,
             data_indexer)
-        indexed_second_words = self.index_text(
+        indexed_second_words = self._index_text(
             self.question2_tokenized,
             data_indexer)
 
         return QuoraFeatureIndexed(indexed_first_words, indexed_second_words, self.label)
 
+#----------------------------------------------------------------------------------------------
+
 class QuoraFeatureIndexed(IndexedFeature):
 
-    _oov_token = 0
     label_mapping = {0: [1, 0], 1: [0, 1], None: None}
 
     def __init__(self, question_1_indices, question_2_indices, label):
@@ -90,6 +81,37 @@ class QuoraFeatureIndexed(IndexedFeature):
         self.question_1_indices = question_1_indices
         self.question_2_indices = question_2_indices
         self.label = self.label_mapping[label]
+
+    @staticmethod
+    def read_from_line(line, nlp):
+        """
+        Given a string line from the dataset, construct an PairFeature from it.
+
+        :param line: str
+            The line from the dataset from which to construct an PairFeature
+            from. Expected line format for training data:
+            (1) [id],[qid1],[qid2],[question1],[question2],[is_duplicate]
+            Or, in the case of the test set:
+            (2) [id],[question1],[question2]
+        :param nlp spaCy pipeline eg: spacy.load('en_core_web_md')
+        :return instance: QuoraFeature
+            An instance constructed from the data in the line of the dataset.
+        """
+        fields = list(csv.reader([line]))[0]
+        if len(fields) == 6:
+            # training set instance
+            _, _, _, first_sentence, second_sentence, label = fields
+            label = int(label)
+        elif len(fields) == 3:
+            # test set instance
+            _, first_sentence, second_sentence = fields
+            label = None
+        else:
+            raise RuntimeError("Unrecognized line format: " + line)
+
+        first_sentence_token = QuoraFeatureIndexed.tokenize(first_sentence, nlp)
+        second_sentence_token = QuoraFeatureIndexed.tokenize(second_sentence, nlp)
+        return QuoraFeatureIndexed(first_sentence_token, second_sentence_token, label)
 
     @overrides
     def get_lengths(self):

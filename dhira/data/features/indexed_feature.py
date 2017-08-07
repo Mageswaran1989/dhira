@@ -1,4 +1,4 @@
-from dhira.data.features.feature_base import FeatureBase
+from dhira.data.features.internal.feature_base import FeatureBase
 
 class IndexedFeatureWord():
     """
@@ -42,6 +42,26 @@ class IndexedFeature(FeatureBase):
     This would mean that ``"Jamie"`` and ``"Holly"`` were OOV to the
     ``DataIndexer``, and the other words were given indices.
     """
+
+    _oov_token = 0
+
+    @staticmethod
+    def tokenize(text, nlp):
+        """
+        This function uses a Tokenizer to output a
+        list of the indices in the input string.
+
+        :param text: str
+            The label encodes the ground truth label of the Feature.
+            This encoding varies across tasks and features.
+
+        :param nlp: spaCy nlp pipeline context
+
+        :return  word_list: List[int]
+           A list of the indices, as tokenized by the
+           spaCy's tokenizer.
+        """
+        return [tok.rank if tok.has_vector else IndexedFeature._oov_token for tok in nlp(text)]
 
     @classmethod
     def empty_feature(cls):

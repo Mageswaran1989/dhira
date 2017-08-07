@@ -1,13 +1,13 @@
-import os
-import logging
 import codecs
 import itertools
+import logging
+import os
+import numpy as np
 
-from dhira.data.features.feature_base import FeatureBase
 from tqdm import tqdm_notebook as tqdm
-from dhira.data.utils.pickle_data import PickleData
+
 from dhira.data.download.downloader import Downloader
-from sklearn import datasets
+from dhira.data.utils.pickle_data import PickleData
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -27,16 +27,21 @@ class Dataset(PickleData):
                  train_features = None,
                  val_features=None,
                  test_features=None,
-                 pickle_dir = None,
                  download_path=None):
         """
         Initializes the Dataset with the feature type to be read and the required files
         :param feature_type: Sub class of `Feature` type
-        :param train_file: 
-        :param test_file: 
-        :param val_file: 
+        :param train_files: : List[str]
+            A collection of filenames to read the specific self.feature_type
+            from, line by line. 
+        :param test_files: : List[str]
+            A collection of filenames to read the specific self.feature_type
+            from, line by line.
+        :param val_files: : List[str]
+            A collection of filenames to read the specific self.feature_type
+            from, line by line.
         """
-        super(Dataset, self).__init__(pickle_directory=pickle_dir)
+        super(Dataset, self).__init__(pickle_directory=name)
         self.download_path = download_path
         self.name = name
         self.feature_type = feature_type
@@ -51,21 +56,25 @@ class Dataset(PickleData):
         self.train_pickle_file = self.name + '-train.p'
         self.val_pickle_file = self.name + '-val.p'
         self.test_pickle_file = self.name +  '-test.p'
-        self.indexer_pickle_file = self.name + '-data_indexr.p'
+        self.indexer_pickle_file = self.name + '-data_indexer.p'
 
-
-    def test_downloaded_file(self):
-        raise NotImplementedError
 
     def download(self, url: str):
         """
         Downloads the data set and extracts to the provided download_path
         """
-        if not os.path.isdir(self.download_path):
-            os.mkdir(self.download_path)
+        if self.download_path is None:
+            #creates a folder @ ~/.dhira/dataset_name/
+            self.download_path = os.path.expanduser(os.path.join('~', '.dhira', self.name))
+            if not os.path.exists(self.download_path):
+                os.makedirs(self.download_path)
+        else:
+            if not os.path.exists(self.download_path):
+                os.makedirs(self.download_path)
         file = self.download_path + '/' + url.split('/')[-1]
-        self._downloaded_path = Downloader.get(url, file)
-        if('tar' in file): self._downloaded_path = Downloader.extract_tar(file, self.download_path) #TODO check file type
+        downloaded_path = Downloader.get(url, file)
+        if('tar' in file): downloaded_path = Downloader.extract_tar(file, self.download_path) #TODO check file type
+        return downloaded_path
 
     def merge(self, other):
         """
@@ -181,14 +190,84 @@ class Dataset(PickleData):
 
         return features
 
-    def load_train_features_from_file(self):
+    def split_dataset(self, features_list):
+        """
+        Divides the features list in to 8:1:1 train:val:test sets
+        :param features_list: 
+        :return: 
+        """
+        np.random.seed(42)
+        train_indices = np.random.choice(len(features_list), round(len(features_list) * 0.8), replace=False)
+        test_val_indices = np.array(list(set(range(len(features_list))) - set(train_indices)))
+        mid_point = int(len(test_val_indices) / 2)
+        val_indices = test_val_indices[:mid_point]
+        test_indices = test_val_indices[mid_point:]
+
+        self.train_features = [features_list[index] for index in train_indices]
+        self.val_features = [features_list[index] for index in val_indices]
+        self.test_features = [features_list[index] for index in test_indices]
+
+
+    def pickle_train_features(self):
+        if not self.check_pickle_exists(self.train_pickle_file):
+            logger.info("Pickling the train data file")
+            self.write_pickle(self.train_features, self.train_pickle_file)
+        else:
+            logger.info('{} already exists'.format(str(self.train_pickle_file)))
+
+    def pickle_val_features(self):
+        if not self.check_pickle_exists(self.val_pickle_file):
+            logger.info("Pickling the val data file")
+            self.write_pickle(self.train_features, self.val_pickle_file)
+        else:
+            logger.info('{} already exists'.format(str(self.val_pickle_file)))
+
+    def pickle_test_features(self):
+        if not self.check_pickle_exists(self.test_pickle_file):
+            logger.info("Pickling the test data file")
+            self.write_pickle(self.train_features, self.test_pickle_file)
+        else:
+            logger.info('{} already exists'.format(str(self.test_pickle_file)))
+
+    def _load_train_features(self):
         raise NotImplementedError
 
-    def load_val_features_from_file(self):
+    def _load_val_features(self):
         raise NotImplementedError
 
-    def load_test_features_from_file(self):
+    def _load_test_features(self):
         raise NotImplementedError
+
+    def load_train_features(self):
+
+        logger.info("Getting training data from {}".format(self.train_files))
+
+        if not self.check_pickle_exists(self.train_pickle_file):
+            logger.info("Processing the train data file for first time")
+            self._load_train_features()
+        else:
+            logger.info("Reusing the pickle file {}.".format(self.train_pickle_file))
+            self.train_features = self.read_pickle(self.train_pickle_file)
+
+    def load_val_features(self):
+        logger.info("Getting validation data from {}".format(self.val_files))
+
+        if not self.check_pickle_exists(self.val_pickle_file):
+            logger.info("Processing the validation data file for first time")
+            self._load_val_features()
+        else:
+            logger.info("Reusing the pickle file {}.".format(self.val_features))
+            self.val_features = self.read_pickle(self.val_pickle_file)
+
+    def load_test_features(self):
+        logger.info("Getting test data from {}".format(self.test_files))
+
+        if not self.check_pickle_exists(self.test_pickle_file):
+            logger.info("Processing the test data file for first time")
+            self._load_test_features()
+        else:
+            logger.info("Reusing the pickle file {}.".format(self.test_features))
+            self.test_features = self.read_pickle(self.test_pickle_file)
 
     #Override this for more control at feature level
 

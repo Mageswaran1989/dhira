@@ -1,5 +1,7 @@
 import numpy as np
-from .feature_base import FeatureBase
+
+from dhira.data.features.internal.feature_base import FeatureBase
+
 
 class ImageFeature(FeatureBase):
     """

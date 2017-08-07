@@ -1,11 +1,12 @@
+import logging
 import os
 import pickle
-import logging
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.preprocessing import LabelBinarizer
 
-from dhira.data.dataset.dataset_base import Dataset
+from dhira.data.dataset.internal.dataset_base import Dataset
 from dhira.data.features.image_feature import ImageFeature
 
 logger = logging.getLogger(__name__)
@@ -15,26 +16,14 @@ class Cifiar10(Dataset):
     image_shape = (32,32,3)
 
     def __init__(self,
-                 name='Cifiar10',
+                 name='cifiar10',
                  feature_type = ImageFeature,
-                 train_files = None,
-                 test_files = None,
-                 val_files = None,
                  pickle_dir=None,
-                 train_features=None,
-                 val_features=None,
-                 test_features=None,
                  download_path=None):
 
         super(Cifiar10, self).__init__(name=name,
                                            feature_type=feature_type,
-                                           train_files=train_files,
-                                           test_files=test_files,
-                                           val_files=val_files,
                                            pickle_dir=pickle_dir,
-                                           train_features=train_features,
-                                           val_features=val_features,
-                                           test_features=test_features,
                                            download_path=download_path)
 
         self._url = 'https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
@@ -242,12 +231,12 @@ class Cifiar10(Dataset):
             features_class.append(self.feature_type(image=image, label=label))
         return features_class
 
-    def load_train_features_from_file(self):
+    def load_train_features(self):
         self.train_features = []
         for i in range(0, self._num_data_batches):
             self.train_features.extend(self.load_preprocess_training_batch(i+1))
 
-    def load_val_features_from_file(self):
+    def load_val_features(self):
         valid_features, valid_labels = pickle.load(open(self._downloaded_path+'/preprocess_validation.p', mode='rb'))
 
         self.val_features = []
@@ -255,7 +244,7 @@ class Cifiar10(Dataset):
         for image, label in zip(valid_features, valid_labels):
             self.val_features.append(self.feature_type(image=image, label=label))
 
-    def load_test_features_from_file(self):
+    def load_test_features(self):
         test_features, test_labels = pickle.load(open(self._downloaded_path+'/preprocess_testing.p', mode='rb'))
         #TODO rename teh file
         self.test_features = []

@@ -6,7 +6,7 @@ import errno
 class PickleData:
 
     def __init__(self, pickle_directory):
-        self.pickle_directory = pickle_directory
+        self.pickle_directory = os.path.expanduser(os.path.join('~', '.dhira', pickle_directory))
 
     def check_pickle_exists(self, pickle_file):
         """

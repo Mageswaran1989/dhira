@@ -1,5 +1,4 @@
-from dhira.data.features.feature_base import FeatureBase
-from dhira.data.nlp.spacy.tokenizer import Tokenizer
+from dhira.data.features.internal.feature_base import FeatureBase
 
 class TextFeature(FeatureBase):
     """
@@ -17,12 +16,11 @@ class TextFeature(FeatureBase):
     In order to actually convert text into some kind of indexed sequence, we
     rely on a ``Tokenizer``.
     """
-    def __init__(self, label=None, tokenizer=None):
-        if tokenizer:
-            self.tokenizer: Tokenizer = tokenizer()
+    def __init__(self, label=None):
         super(TextFeature, self).__init__(label)
 
-    def _words_from_text(self, text):
+    @staticmethod
+    def tokenize(text, nlp):
         """
         This function uses a Tokenizer to output a
         list of the words in the input string.
@@ -30,29 +28,33 @@ class TextFeature(FeatureBase):
         :param text: str
             The label encodes the ground truth label of the Feature.
             This encoding varies across tasks and features.
-
+        
+        :param nlp: spaCy nlp pipeline context
+        
         :return  word_list: List[str]
            A list of the words, as tokenized by the
-           TextFeature's tokenizer.
+           spaCy's tokenizer.
         """
-        return self.tokenizer.get_words_for_indexer(text)
+        return [tok.text for tok in nlp(text)]
 
-    def _index_text(self, text, data_indexer):
+    def _index_text(self, tokenized_text, data_indexer):
         """
         This function uses a Tokenizer and an input DataIndexer to convert a
         string into a list of integers representing the word indices according
         to the DataIndexer.
 
-        :param text: str
+        :param tokenized_text: list(str)
             The label encodes the ground truth label of the Feature.
             This encoding varies across tasks and features.
 
         :return index_list: List[int]
            A list of the words converted to indices, as tokenized by the
-           TextFeature's tokenizer and indexed by the DataIndexer.
+           spaCy tokenizer and indexed by the DataIndexer.
 
         """
-        return  self.tokenizer.index_text(text, data_indexer)
+        word_indexed_text = [data_indexer.get_word_index(word, namespace="words")
+                             for word in tokenized_text["words"]]
+        return word_indexed_text
 
     def words(self):
         """
@@ -93,7 +95,7 @@ class TextFeature(FeatureBase):
         """
         raise NotImplementedError
 
-    @classmethod
+    @staticmethod
     def read_from_line(cls, line):
         """
         Reads an instance of this type from a line.
