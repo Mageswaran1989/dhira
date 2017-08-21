@@ -1,18 +1,32 @@
 # dhīra — a very learned and gentle scholar
 
-A small practise framework created while working with Kaggle Quoa dataset on Question Similarity.
+A primitive practise framework created while working with Kaggle Quoa dataset on Question Similarity.
 
 Following git repo "https://github.com/nelson-liu/paraphrase-id-tensorflow", is the base reference for my work.
 
-Where I have made changes like using spaCy as NLP backend. 
 
 ## Why dhīra?
+- To model or practice any TensorFlow examples/tutorials out there, with minimal work
+- To explore application based use cases with TensorFlow
 - Why not [Keras](https://github.com/fchollet/keras/)? Simple! Keras is a birds view from a 10000ft!!!
 - Abstract common TensorFlow environment setup and concentrate more on modeling from academic papers
-- Create custom Dataset classes and reuse them across models
+- Creates custom Dataset classes and reuses them across models
 - To write custom models from scratch and understand the model from an Enginering perspective
-- Explore the possibility to merge Tensorflow and Embedded world from where I started!
 
+## Papers covered so far
+
+|Domain   |Paper / Dataset                                  |dhīra Reference|TF/Keras     | References |
+|:-------:|:------------------------------:                 |:-------------:|:-----------:| :--------: |  
+| NLP     |[Glove1](https://arxiv.org/abs/1408.5882)        |               |             | http://cs231n.github.io/convolutional-networks/ |
+|         |[Glove2](https://arxiv.org/abs/1510.03820)       |               |             | http://www.wildml.com/2015/11/understanding-convolutional-neural-networks-for-nlp |
+|         |[Moview Review](http://www.cs.cornell.edu/people/pabo/movie-review-data/)||    | http://www.wildml.com/2015/12/implementing-a-cnn-for-text-classification-in-tensorflow/ |
+|         |                                                 |               |             | Git: https://github.com/yoonkim/CNN_sentence |      
+|         |Siamease                                         |               |             |             |
+|         |Matching Siamease                                ||||
+| CV      |Conv
+|         |[Cifiar](https://www.cs.toronto.edu/~kriz/cifar.html)|           |              ||
+               
+    
 ### How to run?
 - Check example folder
 
@@ -37,6 +51,9 @@ Where I have made changes like using spaCy as NLP backend.
         - https://github.com/AllenDowney/ThinkStats2
     - Diffrential Equations
         - https://github.com/juanklopper/Differential-Equations
+-Jupyter Notebooks
+    - Data Science 
+        - https://github.com/donnemartin/data-science-ipython-notebooks
 
 ### [Awesome DeepLearning](https://github.com/ChristosChristofidis/awesome-deep-learning)
 ### [Awesome TensorFlow](https://github.com/jtoy/awesome-tensorflow)
@@ -79,3 +96,10 @@ git commit -m "move submodule to latest commit in master"
 # share your changes
 git push
 ``` 
+
+
+# All time DL References
+## Losses
+## Optimization
+- [An overview of gradient descent optimization
+algorithms∗](https://arxiv.org/pdf/1609.04747v1.pdf)

@@ -4,7 +4,7 @@ from tqdm import tqdm_notebook as tqdm
 
 from dhira.data.data_indexer import DataIndexer
 from dhira.data.dataset.internal.dataset_base import Dataset
-
+from dhira.data.features.indexed_feature import IndexedFeature
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
@@ -64,6 +64,17 @@ class TextDataset(Dataset):
         if not self.pad and self.max_lengths:
             raise ValueError("Passed in max_length {}, but set pad to false. "
                              "Did you mean to do this?".format(self.max_lengths))
+
+        #Load the DataIndexer if found
+        if self.check_pickle_exists(self.indexer_pickle_file):
+            logger.info("Reusing the pickle file {}.".format(self.indexer_pickle_file))
+            self.data_indexer = self.read_pickle(self.indexer_pickle_file)
+            self.is_data_indexer_fitted = True
+
+            #Lets safely assume data is already fitted in previous oass
+            self._is_train_data_indexed = True
+            self._is_val_data_indexed = True
+            self._is_test_data_indexed = True
 
     def set_nlp_pipelie(self, nlp):
         """
@@ -146,18 +157,8 @@ class TextDataset(Dataset):
         return features
 
     def fit_data_indexer(self):
-
         logger.info('Trying to load prefitted data_indexer... {}'.format(self.indexer_pickle_file))
-        if self.check_pickle_exists(self.indexer_pickle_file) and not self.is_data_indexer_fitted:
-            logger.info("Reusing the pickle file {}.".format(self.indexer_pickle_file))
-            self.data_indexer = self.read_pickle(self.indexer_pickle_file)
-            self.is_data_indexer_fitted = True
-
-            #Lets safely assume data is already fitted in previous oass
-            self._is_train_data_indexed = True
-            self._is_val_data_indexed = True
-            self._is_test_data_indexed = True
-        else:
+        if not self.check_pickle_exists(self.indexer_pickle_file):
             logger.info("Data Indexer needs to be fitted...")
             self.data_indexer.fit_word_dictionary(self.train_features, self.min_count)
             self.is_data_indexer_fitted = True
@@ -178,20 +179,20 @@ class TextDataset(Dataset):
         return indexed_features
 
     def index_train_features(self):
-        if not self._is_train_data_indexed:
+        if not isinstance(self.train_features[0], IndexedFeature):
             self.train_features = self.to_indexed_features(self.train_features)
             self._is_train_data_indexed = True
 
         self.training_data_max_lengths = self.max_lengths_to_use(self.train_features)
 
     def index_val_features(self):
-        if not self._is_val_data_indexed:
+        if not isinstance(self.val_features[0], IndexedFeature):
             self.val_features = self.to_indexed_features(self.val_features)
             self._is_val_data_indexed = True
         self.max_lengths_to_use(self.val_features)
 
     def index_test_features(self):
-        if not self._is_test_data_indexed:
+        if not isinstance(self.test_features[0], IndexedFeature):
             self.test_features = self.to_indexed_features(self.test_features)
             self._is_test_data_indexed = True
         self.max_lengths_to_use(self.test_features)

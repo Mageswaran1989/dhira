@@ -4,8 +4,7 @@ import logging
 
 from tqdm import tqdm
 
-from dhira.data.dataset.internal.dataset_base import Dataset
-from dhira.data.dataset.text import TextDataset
+from dhira.data.dataset.internal.text import TextDataset
 from dhira.data.features.quora_feature import QuoraFeature
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -179,16 +178,16 @@ class QuoraDataset(TextDataset):
             inputs, labels = feature.as_training_data()
             yield inputs, labels
 
-    def custom_input(self, kwargs):
+    def custom_input(self, question_1, question_2):
         """
         Takes two questions and converts them into `QuoraFeatureIndexed` feature
-        :param kwargs: dict
-                    question_1: str
-                    question_2: str
-        :param nlp spaCy nlp pipeline
-        :return: Batch of QuoraFeatureIndexed to be processed with predict
+        :param question_1: 
+        :param question_2: 
+        :return: QuoraFeatureIndexed to be batched with  DataManager.to_batch()
         """
-        first_sentence_token = self.feature_type.tokenize(kwargs['question_1'], self.nlp)
-        second_sentence_token = self.feature_type.tokenize(kwargs['question_2'], self.nlp)
-        single_feature = self.feature_type(first_sentence_token,second_sentence_token, None).to_indexed_feature(self.data_indexer)
+
+        first_sentence_token = self.feature_type.tokenize(question_1, self.nlp)
+        second_sentence_token = self.feature_type.tokenize(question_2, self.nlp)
+        single_feature = self.feature_type(first_sentence_token,second_sentence_token, None).\
+            to_indexed_feature(self.data_indexer)
         return single_feature

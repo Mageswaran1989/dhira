@@ -1,19 +1,19 @@
-import codecs
-import random
-import numpy as np
 import io
+import random
+
+from overrides import overrides
 from tqdm import tqdm
 
-from dhira.data.dataset.text import TextDataset
+from dhira.data.dataset.internal.text import TextDataset
 from dhira.data.features.movie_review_feature import MovieReviewFeature
+
 
 class MovieReview(TextDataset):
 
     def __init__(self,
-                 nlp,
                  name='movie-review-data',
                  feature_type = MovieReviewFeature,
-                 max_lengths={"num_sentence_words": 50},
+                 max_lengths={"num_sentence_words": 59},
                  pad=True,
                  download_path=None):
         """
@@ -29,7 +29,6 @@ class MovieReview(TextDataset):
                                            download_path=download_path)
 
         random.seed(42)
-        self.nlp = nlp
         self.max_lengths = max_lengths
         self.pad = pad
 
@@ -50,10 +49,11 @@ class MovieReview(TextDataset):
         #List of all lines read form the dataset appended with lables
         self.features = []
 
-        self.downloaded_path = self.download(self._url)
-        self.preprocess_data()
+        self.is_online_dataset = True
 
+    @overrides
     def preprocess_data(self):
+        self.downloaded_path = self.download(self._url)
 
         postive_reviews_file = self.downloaded_path + 'rt-polaritydata/rt-polarity.pos'
         negative_reviews_file = self.downloaded_path + 'rt-polaritydata/rt-polarity.neg'
@@ -102,3 +102,15 @@ class MovieReview(TextDataset):
             # NumPy arrays suitable for training.
             inputs, labels = feature.as_training_data()
             yield inputs, labels
+
+    def custom_input(self, *args):
+        """
+        Takes two questions and converts them into `QuoraFeatureIndexed` feature
+        :param *args: sentence: str
+        :return: Batch of QuoraFeatureIndexed to be processed with predict
+        """
+        sentence_token = self.feature_type.tokenize(args[0], self.nlp)
+        single_feature = self.feature_type(sentence_token, None).to_indexed_feature(
+            self.data_indexer)
+        single_feature.pad(self.max_lengths)
+        return single_feature

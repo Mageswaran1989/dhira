@@ -1,13 +1,11 @@
-from copy import deepcopy
 import logging
-from overrides import overrides
+
 import tensorflow as tf
+from overrides import overrides
 from tensorflow.contrib.rnn import LSTMCell
 
-from ..base_tf_model import BaseTFModel
-from dhira.tf.models.base_tf_model import BaseTFModel
-from dhira.tf.models.util.rnn import SwitchableDropoutWrapper, last_relevant_output, mean_pool
-
+from dhira.tf.models.internal.base_tf_model import BaseTFModel
+from dhira.tf.models.util.rnn import SwitchableDropoutWrapper, mean_pool
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +131,7 @@ class SiameseMatchingBiLSTM(BaseTFModel):
         # A boolean that encodes whether we are training or evaluating
         self.is_train = tf.placeholder('bool', [], name='is_train')
 
-    def _build_forward(self):
+    def _compile(self):
         """
         Using the config passed to the SiameseMatchingBiLSTM object on
         creation, build the forward pass of the computation graph.
@@ -269,7 +267,7 @@ class SiameseMatchingBiLSTM(BaseTFModel):
         with tf.name_scope("loss"):
             # Get the predicted class probabilities
             # Shape: (batch_size, 2)
-            self.y_pred = tf.nn.softmax(projection, name="softmax_probabilities")
+            self.predictions = tf.nn.softmax(projection, name="softmax_probabilities")
             # Use softmax_cross_entropy_with_logits to calculate xentropy.
             # It's unideal to do the softmax twice, but I prefer the numerical
             # stability of the tf function.
@@ -282,17 +280,17 @@ class SiameseMatchingBiLSTM(BaseTFModel):
             # Get the correct predictions.
             # Shape: (batch_size,) of bool
             correct_predictions = tf.equal(
-                tf.argmax(self.y_pred, 1),
+                tf.argmax(self.predictions, 1),
                 tf.argmax(self.y_true, 1))
 
             # Cast to float, and take the mean to get accuracy
-            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions,
+            self.eval_operation = tf.reduce_mean(tf.cast(correct_predictions,
                                                    "float"))
 
         with tf.name_scope("train"):
             optimizer = tf.train.AdamOptimizer()
-            self.training_op = optimizer.minimize(self.loss,
-                                                  global_step=self.global_step)
+            self.optimizer = optimizer.minimize(self.loss,
+                                                global_step=self.global_step)
 
         # with tf.name_scope("train_summaries"):
         #     # Add the loss and the accuracy to the tensorboard summary
@@ -300,8 +298,8 @@ class SiameseMatchingBiLSTM(BaseTFModel):
         #     tf.summary.scalar("accuracy", self.accuracy)
         #     self.summary_op = tf.summary.merge_all()
 
-        self.add_scalar_summary(self.loss)
-        self.add_scalar_summary(self.accuracy)
+        self._add_scalar_summary(self.loss)
+        self._add_scalar_summary(self.eval_operation)
 
     @overrides
     def _get_train_feed_dict(self, batch):

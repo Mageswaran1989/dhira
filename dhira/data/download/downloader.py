@@ -2,6 +2,9 @@ from urllib.request import urlretrieve
 from os.path import isfile, isdir
 from tqdm import tqdm
 import tarfile
+import logging
+
+logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 class DLProgress(tqdm):
     last_block = 0
@@ -31,7 +34,7 @@ class Downloader:
                     local_file_name,
                     pbar.hook)
         else:
-            print('Resusing the file: ', local_file_name)
+            logger.info('Resusing the file: {}'.format(local_file_name))
         return local_file_name
 
     @staticmethod
@@ -48,4 +51,4 @@ class Downloader:
                 tar.extractall(path=path_to_extract)
                 tar.close()
 
-        return path_to_extract+'/'#+extracted_folder_name
+        return path_to_extract+'/'+extracted_folder_name #extracted_folder_name needed for cifiar

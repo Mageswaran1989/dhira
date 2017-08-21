@@ -30,3 +30,7 @@
 	path = exploration/jupyter/data-science-ipython-notebooks
 	url = https://github.com/donnemartin/data-science-ipython-notebooks
 	branch = master
+[submodule "exploration/tensorflow/deep-learning"]
+	path = exploration/tensorflow/deep-learning
+	url = https://github.com/udacity/deep-learning
+	branch = master

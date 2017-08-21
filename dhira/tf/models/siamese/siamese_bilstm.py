@@ -1,14 +1,13 @@
-from copy import deepcopy
 import logging
-from overrides import overrides
+
 import tensorflow as tf
+from overrides import overrides
 from tensorflow.contrib.rnn import LSTMCell
 
-from dhira.tf.models.base_tf_model import BaseTFModel
+from dhira.tf.models.internal.base_tf_model import BaseTFModel
 from dhira.tf.models.util.rnn import SwitchableDropoutWrapper, last_relevant_output, mean_pool
 
 logger = logging.getLogger(__name__)
-
 
 class SiameseBiLSTM(BaseTFModel):
     """
@@ -66,9 +65,6 @@ class SiameseBiLSTM(BaseTFModel):
 
     @overrides
     def __init__(self,
-                 mode,
-                 save_dir,
-                 log_dir,
                  run_id,
                  word_vocab_size, 
                  word_embedding_dim, 
@@ -78,15 +74,13 @@ class SiameseBiLSTM(BaseTFModel):
                  rnn_output_mode,
                  output_keep_prob,
                  rnn_hidden_size,
-                 name='SiameseBiLSTM'):
+                 name='SiameseBiLSTM',
+                 save_dir=None,
+                 log_dir=None):
         super(SiameseBiLSTM, self).__init__(name=name,
-                                              mode=mode,
                                               run_id=run_id,
                                               save_dir=save_dir,
                                               log_dir=log_dir)
-
-        self.mode = mode
-
         self.word_vocab_size = word_vocab_size
         self.word_embedding_dim = word_embedding_dim
         self.word_embedding_matrix = word_embedding_matrix
@@ -126,7 +120,7 @@ class SiameseBiLSTM(BaseTFModel):
         self.is_train = tf.placeholder('bool', [], name='is_train')
 
     @overrides
-    def _build_forward(self):
+    def _compile(self):
         """
         Using the values in the config passed to the SiameseBiLSTM object
         on creation, build the forward pass of the computation graph.
@@ -151,7 +145,7 @@ class SiameseBiLSTM(BaseTFModel):
 
         with tf.variable_scope("embeddings"), tf.device('/cpu:0'):
             with tf.variable_scope("embedding_var"), tf.device("/cpu:0"):
-                if self.mode == "train":
+                if self._mode == "train":
                     # Load the word embedding matrix that was passed in
                     # since we are training
                     word_emb_mat = tf.get_variable(
@@ -274,33 +268,33 @@ class SiameseBiLSTM(BaseTFModel):
             # between the two encoded sentences to get an output
             # distribution over labels.
             # Shape: (batch_size, 2)
-            self.y_pred = self._l1_similarity(encoded_sentence_one,
-                                              encoded_sentence_two)
+            self.predictions = self._l1_similarity(encoded_sentence_one,
+                                                   encoded_sentence_two)
             # Manually calculating cross-entropy, since we output
             # probabilities and can't use softmax_cross_entropy_with_logits
             # Add epsilon to the probabilities in order to prevent log(0)
             self.loss = tf.reduce_mean(
                 -tf.reduce_sum(tf.cast(self.y_true, "float") *
-                               tf.log(self.y_pred),
+                               tf.log(self.predictions),
                                axis=1))
 
         with tf.name_scope("accuracy"):
             # Get the correct predictions.
             # Shape: (batch_size,) of bool
             correct_predictions = tf.equal(
-                tf.argmax(self.y_pred, 1),
+                tf.argmax(self.predictions, 1),
                 tf.argmax(self.y_true, 1))
 
             # Cast to float, and take the mean to get accuracy
-            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions,
+            self.eval_operation = tf.reduce_mean(tf.cast(correct_predictions,
                                                    "float"))
 
         with tf.name_scope("train"):
             optimizer = tf.train.AdamOptimizer()
             with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
                 self.gradient_and_variance = optimizer.compute_gradients(self.loss)
-                self.training_op = optimizer.apply_gradients(self.gradient_and_variance,
-                                                               global_step=self.global_step)
+                self.optimizer = optimizer.apply_gradients(self.gradient_and_variance,
+                                                           global_step=self.global_step)
 
         # with tf.name_scope("train_summaries"):
             # Add the loss and the accuracy to the tensorboard summary
@@ -308,8 +302,6 @@ class SiameseBiLSTM(BaseTFModel):
             # tf.summary.scalar("accuracy", self.accuracy)
             # self.summary_op = tf.summary.merge_all()
 
-        self.add_scalar_summary(self.loss)
-        self.add_scalar_summary(self.accuracy)
 
     @overrides
     def _evaluate_model_parameters(self, session):

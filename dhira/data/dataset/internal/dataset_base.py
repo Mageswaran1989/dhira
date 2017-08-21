@@ -58,23 +58,43 @@ class Dataset(PickleData):
         self.test_pickle_file = self.name +  '-test.p'
         self.indexer_pickle_file = self.name + '-data_indexer.p'
 
+        # set this to TRue for datasets that depends on downloaind and preprocessing the features
+        self.is_online_dataset = None
 
-    def download(self, url: str):
+    @staticmethod
+    def download(url: str, dataset_name: str, download_path: str = None):
+        """
+        
+        :param url: Url of file to be downloaded
+        :param dataset_name: Name of the Dataset
+        :param download_path: User path to download, Default is ~/.dhira/dataset_name/
+        :return: downloaded path: str
+        """
         """
         Downloads the data set and extracts to the provided download_path
         """
-        if self.download_path is None:
+        if download_path is None:
             #creates a folder @ ~/.dhira/dataset_name/
-            self.download_path = os.path.expanduser(os.path.join('~', '.dhira', self.name))
-            if not os.path.exists(self.download_path):
-                os.makedirs(self.download_path)
+            download_path = os.path.expanduser(os.path.join('~', '.dhira', dataset_name))
+            if not os.path.exists(download_path):
+                os.makedirs(download_path)
         else:
-            if not os.path.exists(self.download_path):
-                os.makedirs(self.download_path)
-        file = self.download_path + '/' + url.split('/')[-1]
+            if not os.path.exists(download_path):
+                os.makedirs(download_path)
+        file = download_path + '/' + url.split('/')[-1]
         downloaded_path = Downloader.get(url, file)
-        if('tar' in file): downloaded_path = Downloader.extract_tar(file, self.download_path) #TODO check file type
+        logger.info(downloaded_path)
+        if('tar' in file): downloaded_path = Downloader.extract_tar(file, download_path) #TODO check file type
+        logger.info(downloaded_path)
         return downloaded_path
+
+    def preprocess_data(self):
+        """
+        Implement this to preprocess the online dataset, like downloading, text preprocessing, spliting the dataset etc.,
+        Make sure train/val/test features are loaded
+        :return: 
+        """
+        raise NotImplementedError
 
     def merge(self, other):
         """
@@ -218,14 +238,14 @@ class Dataset(PickleData):
     def pickle_val_features(self):
         if not self.check_pickle_exists(self.val_pickle_file):
             logger.info("Pickling the val data file")
-            self.write_pickle(self.train_features, self.val_pickle_file)
+            self.write_pickle(self.val_features, self.val_pickle_file)
         else:
             logger.info('{} already exists'.format(str(self.val_pickle_file)))
 
     def pickle_test_features(self):
         if not self.check_pickle_exists(self.test_pickle_file):
             logger.info("Pickling the test data file")
-            self.write_pickle(self.train_features, self.test_pickle_file)
+            self.write_pickle(self.test_features, self.test_pickle_file)
         else:
             logger.info('{} already exists'.format(str(self.test_pickle_file)))
 
@@ -238,33 +258,46 @@ class Dataset(PickleData):
     def _load_test_features(self):
         raise NotImplementedError
 
+    def preprocess_online_dataset(self):
+        if self.is_online_dataset:
+            self.preprocess_data()
+            assert self.train_features is not None
+            assert self.val_features is not None
+            assert self.test_features is not None
+
     def load_train_features(self):
 
-        logger.info("Getting training data from {}".format(self.train_files))
-
         if not self.check_pickle_exists(self.train_pickle_file):
-            logger.info("Processing the train data file for first time")
-            self._load_train_features()
+            if not self.is_online_dataset:
+                logger.info("Getting training data from {}".format(self.train_files))
+                logger.info("Processing the train data file for first time")
+                self._load_train_features()
+            else:
+                self.preprocess_online_dataset() #For now this loads all the train/val/features
         else:
             logger.info("Reusing the pickle file {}.".format(self.train_pickle_file))
             self.train_features = self.read_pickle(self.train_pickle_file)
 
     def load_val_features(self):
-        logger.info("Getting validation data from {}".format(self.val_files))
-
         if not self.check_pickle_exists(self.val_pickle_file):
-            logger.info("Processing the validation data file for first time")
-            self._load_val_features()
+            if not self.is_online_dataset:
+                logger.info("Getting validation data from {}".format(self.val_files))
+                logger.info("Processing the validation data file for first time")
+                self._load_val_features()
+            else:
+                logger.info('This is online dataset, preprocessed early in load_train_features()')
         else:
             logger.info("Reusing the pickle file {}.".format(self.val_features))
             self.val_features = self.read_pickle(self.val_pickle_file)
 
     def load_test_features(self):
-        logger.info("Getting test data from {}".format(self.test_files))
-
         if not self.check_pickle_exists(self.test_pickle_file):
-            logger.info("Processing the test data file for first time")
-            self._load_test_features()
+            if not self.is_online_dataset:
+                logger.info("Getting test data from {}".format(self.test_files))
+                logger.info("Processing the test data file for first time")
+                self._load_test_features()
+            else:
+                logger.info('This is online dataset, preprocessed early in load_train_features()')
         else:
             logger.info("Reusing the pickle file {}.".format(self.test_features))
             self.test_features = self.read_pickle(self.test_pickle_file)

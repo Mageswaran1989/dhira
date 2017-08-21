@@ -18,17 +18,15 @@ class Cifiar10(Dataset):
     def __init__(self,
                  name='cifiar10',
                  feature_type = ImageFeature,
-                 pickle_dir=None,
                  download_path=None):
 
         super(Cifiar10, self).__init__(name=name,
                                            feature_type=feature_type,
-                                           pickle_dir=pickle_dir,
                                            download_path=download_path)
 
         self._url = 'https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
         self._num_data_batches = 5 #Downloaded dataset batches
-        self.download(self._url)
+        self._downloaded_path = Dataset.download(self._url, name)
         self.preprocess_and_save_data()
         # self.test_files()
 
@@ -246,7 +244,7 @@ class Cifiar10(Dataset):
 
     def load_test_features(self):
         test_features, test_labels = pickle.load(open(self._downloaded_path+'/preprocess_testing.p', mode='rb'))
-        #TODO rename teh file
+        #TODO rename the file
         self.test_features = []
         for image, label in zip(test_features, test_labels):
             self.test_features.append(self.feature_type(image=image, label=label))

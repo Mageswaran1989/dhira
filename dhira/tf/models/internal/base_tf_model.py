@@ -5,6 +5,7 @@ import json
 import math
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.framework import ops
 from tensorflow.contrib.tensorboard.plugins import projector
 from tqdm import tqdm_notebook as tqdm
 
@@ -18,30 +19,35 @@ class BaseTFModel:
     This class is a base model class for Tensorflow that other Tensorflow
     models should inherit from. It defines a unifying API for training and
     prediction.
-
-    :param mode: str
-        One of [train|predict], to indicate what you want the model to do.
+    
+    Consists of following blocks:
+    1. Creating the directories for logging and storing the model
+    2. Creating the placeholders
+    3. Building/compiling the model
+    4. Adds loss and accuracy to the logging by default
+    5. Train routine
+    6. Test routine
+    7. Predict method
     """
-    def __init__(self, name, mode, save_dir, log_dir, run_id):
-        self.mode = mode
-        self.global_step = tf.get_variable(name="global_step",
-                                           shape=[],
-                                           dtype='int32',
-                                           initializer=tf.constant_initializer(0),
-                                           trainable=False)
+    def __init__(self,
+                 name,
+                 run_id,
+                 save_dir=None,
+                 log_dir=None):
+        """
+        
+        :param name: name of the model
+        :param save_dir: To store model parameters. Deafult is '~/.dhira/models/'
+        :param log_dir:  To store model logs. Default is '~/.dhira/models/'
+        :param run_id: An integer to indicate the curent run
+        """
 
         self._name = name
 
-        # Outputs from the model, defined by child classes
-        self.y_pred = None
-        self.loss = None
-        self.accuracy = None
-
-        self.training_op = None #Training optimization
-        self.gradient_and_variance = None
+        #One of [train|predict], to indicate what you want the model to do.
+        self._mode = 'train' # default set to 'train'. Use this in user model for train/predict modes
 
         #To store all summaries of each model
-        self.summary_op = None #Needs to be deprecated
         self._train_summaries = []
         self._val_summaries = []
         self._config_embeddings_filename_tuple = []
@@ -54,37 +60,52 @@ class BaseTFModel:
 
         #Misc Varaibles
         #Directory setup
-        self._run_id = run_id
-        self._save_dir = save_dir
-        self._log_dir = log_dir
-        # self.log_path = log_path
-        # timestamp = str(int(time.time()))
-        #os.path.abspath(os.path.join(os.path.curdir, "logs/", timestamp))
-        self.setup_dir()
+        timestamp = str(int(time.time()))
 
-    def setup_dir(self):
-        save_dir = os.path.join(self._save_dir, self._name, self._run_id.zfill(2) + "/")
+        self._run_id = str(run_id)
 
-        if not os.path.exists(save_dir):
+        if save_dir is None: save_dir = os.path.expanduser(os.path.join('~', '.dhira', 'models'))
+        if log_dir is None:  log_dir = os.path.expanduser(os.path.join('~', '.dhira', 'logs'))
+        self._save_dir = os.path.join(save_dir, self._name, self._run_id.zfill(2) + '/')
+        self._log_dir = os.path.join(log_dir, self._name, self._run_id.zfill(2) + timestamp + '/')
+
+        self._setup_dir()
+
+        self.global_step = None
+
+        # Following variables needs to be implemented/linked by the user model definition
+        # Use self.global_step in optimization for better logging
+        self.predictions = None
+        self.loss = None
+        self.eval_operation = None
+
+        self.optimizer = None #Training optimization
+        self.gradient_and_variance = None
+
+    def _setup_dir(self):
+        """
+        Setups the directory for storing the models and logs for Tensorboard
+        :return: None
+        """
+        if not os.path.exists(self._save_dir):
             logger.info("save_dir {} does not exist, "
-                        "creating it".format(save_dir))
-            os.makedirs(save_dir)
+                        "creating it".format(self._save_dir))
+            os.makedirs(self._save_dir)
 
         # Log the run parameters.
-        log_dir = os.path.join(self._log_dir, self._name, self._run_id.zfill(2))
-        logger.info("Writing logs to {}".format(log_dir))
+        logger.info("Writing logs to {}".format(self._log_dir))
 
-        if not os.path.exists(log_dir):
+        if not os.path.exists(self._log_dir):
             logger.info("log path {} does not exist, "
-                        "creating it".format(log_dir))
-            os.makedirs(log_dir)
+                        "creating it".format(self._log_dir))
+            os.makedirs(self._log_dir)
 
-        #Update the dir with respect to current run_id
-        self._save_dir = save_dir
-        self._log_dir = log_dir
-
-    def log_params(self):
-        params_path = os.path.join(self._log_dir, self.mode + "params.json")
+    def _log_params(self):
+        """
+        Gets the variables state of the model and stores them in a json
+        :return: None
+        """
+        params_path = os.path.join(self._log_dir,  self._name + "params.json")
         logger.info("Writing params to {}".format(params_path))
 
         params = [(str(k),str(v)) for k,v in self.__dict__.items()]
@@ -92,31 +113,127 @@ class BaseTFModel:
         with open(params_path, 'w') as params_file:
             json.dump(dict(params), params_file, indent=4)
 
+    def _add_scalar_summary(self, tensor_obj):
+        """
+        Make sure you log only the needed tensors, or else the 
+        graph will be executed for all those that are not part of the 
+        training also!
+        :param tensor_obj: 
+        :return: 
+        """
+        name = tensor_obj.name.replace(':', '_')
+        train_scalar = tf.summary.scalar('scalar/train/'+name, tensor_obj)
+        self._train_summaries.append(train_scalar)
+
+        val_scalar = tf.summary.scalar('scalar/validation/'+name, tensor_obj)
+        self._val_summaries.append(val_scalar)
+
+    def _add_hist_summary(self, tensor_obj):
+        """
+        Make sure you log only the needed tensors, or else the 
+        graph will be executed for all those that are not part of the 
+        training also!
+        :param tensor_obj: 
+        :return: 
+        """
+        name = tensor_obj.name.replace(':', '_')
+        train_hist = tf.summary.histogram('hist/train/'+name, tensor_obj)
+        self._train_summaries.append(train_hist)
+
+        val_hist = tf.summary.histogram('hist/validation/'+name, tensor_obj)
+        self._val_summaries.append(val_hist)
+
+    def _add_embeddings(self, var_name, tsv_file_name):
+        config = projector.ProjectorConfig()
+        # You can add multiple embeddings. Here we add only one.
+        embedding = config.embeddings.add()
+        embedding.tensor_name = var_name
+        # Link this tensor to its metadata file (e.g. labels).
+        self._config_embeddings_filename_tuple.append((config, embedding, tsv_file_name+'.tsv'))
+
+    def _setup_summaries(self, sess):
+        """
+        Get scalar, hostogram etc., summaries and merge it for writer 
+
+        Does by creating needed Summary objects and folders
+        :return: 
+        """
+        # Output directory for models and summaries
+
+
+        print("Writing to {}\n".format(os.path.abspath(self._log_dir)))
+
+        train_summary_dir = os.path.join(self._log_dir, "summaries", "train")
+        self._train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
+
+        val_summary_dir = os.path.join(self._log_dir, "summaries", "validation")
+        self._val_summary_writer = tf.summary.FileWriter(val_summary_dir, sess.graph)
+
+        # Model checkpoints
+        # Checkpoint directory. Tensorflow assumes this directory already exists so we need to create it
+        self.checkpoint_dir = os.path.abspath(os.path.join(self._save_dir, "checkpoints/"))
+
+        if not os.path.exists(self.checkpoint_dir):
+            os.makedirs(self.checkpoint_dir)
+
+        self._saver = tf.train.Saver(max_to_keep=10)  # Save model after each epoch
+
+        self.train_summary_op = tf.summary.merge(self._train_summaries)
+        self.val_summary_op = tf.summary.merge(self._val_summaries)
+
+        print("--------------------------------------------------")
+        print("\ntensorboard --logdir  {}".format(os.path.abspath(self._log_dir)))
+        print("\ntensorboard --logdir  {} --port 6007".format(os.path.abspath(self.checkpoint_dir)))
+        print("--------------------------------------------------")
+
     def _create_placeholders(self):
+        """
+        Method for user model to plugin their TF placeholder(s) creation
+        :return: None
+        """
         raise NotImplementedError
 
-    def _build_forward(self):
+    def _compile(self):
+        """
+        Method that builds/compiles the model i.e where TF graph definitions are created
+        :return: None
+        """
         raise NotImplementedError
 
     def _evaluate_model_parameters(self, session):
-        """Override this method to evaluate model specific parameters"""
-        ''
+        """
+        Override this method to evaluate model specific parameters.
+        Eg. result = session.run(some_operation) 
+        """
+        logger.warning('There are no model specific operation evaluation!')
 
-    def build_graph(self, seed=0):
+    def compile(self, seed=42):
         """
         Build the graph, ostensibly by setting up the placeholders and then
-        creating the forward pass.
+        creating/compiling the forward pass.
+        
+        Note: Clear the previous tensorflow graph definitions
 
         :param seed: int, optional (default=0)
              The graph-level seed to use when building the graph.
         """
+        ops.reset_default_graph()
         self._is_graph_build = True
-        self.log_params() #Small trick to get all the variables and log them
+        self._log_params() #Small trick to get all the variables and log them
+        # Create the graph object
         with tf.device("/gpu:0"):
             logger.info("Building graph...")
             tf.set_random_seed(seed)
+            self.global_step = tf.get_variable(name="global_step",
+                                               shape=[],
+                                               dtype='int32',
+                                               initializer=tf.constant_initializer(0),
+                                               trainable=False)
             self._create_placeholders()
-            self._build_forward()
+            self._compile()
+
+            self._add_scalar_summary(self.loss)
+            self._add_scalar_summary(self.eval_operation)
 
     def _get_train_feed_dict(self, batch):
         """
@@ -154,85 +271,12 @@ class BaseTFModel:
         """
         raise NotImplementedError
 
-    def add_scalar_summary(self, tensor_obj):
-        """
-        Make sure you log only the needed tensors, or else the 
-        graph will be executed for all those that are not part of the 
-        training also!
-        :param tensor_obj: 
-        :return: 
-        """
-        name = tensor_obj.name.replace(':', '_')
-        train_scalar = tf.summary.scalar('scalar/train/'+name, tensor_obj)
-        self._train_summaries.append(train_scalar)
-
-        val_scalar = tf.summary.scalar('scalar/validation/'+name, tensor_obj)
-        self._val_summaries.append(val_scalar)
-
-
-    def add_hist_summary(self, tensor_obj):
-        """
-        Make sure you log only the needed tensors, or else the 
-        graph will be executed for all those that are not part of the 
-        training also!
-        :param tensor_obj: 
-        :return: 
-        """
-        name = tensor_obj.name.replace(':', '_')
-        train_hist = tf.summary.histogram('hist/train/'+name, tensor_obj)
-        self._train_summaries.append(train_hist)
-
-        val_hist = tf.summary.histogram('hist/validation/'+name, tensor_obj)
-        self._val_summaries.append(val_hist)
-
-    def add_embeddings(self, var_name, tsv_file_name):
-        config = projector.ProjectorConfig()
-        # You can add multiple embeddings. Here we add only one.
-        embedding = config.embeddings.add()
-        embedding.tensor_name = var_name
-        # Link this tensor to its metadata file (e.g. labels).
-        self._config_embeddings_filename_tuple.append((config, embedding, tsv_file_name+'.tsv'))
-
-    def _setup_summaries(self, sess):
-        """
-        Get scalar, hostogram etc., summaries and merge it for writer 
-
-        Does by creating needed Summary objects and folders
-        :return: 
-        """
-        # Output directory for models and summaries
-
-
-        print("Writing to {}\n".format(os.path.abspath(self._log_dir)))
-
-        train_summary_dir = os.path.join(self._log_dir, "summaries", "train")
-        self._train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
-
-        val_summary_dir = os.path.join(self._log_dir, "summaries", "validation")
-        self._val_summary_writer = tf.summary.FileWriter(val_summary_dir, sess.graph)
-
-        # Model checkpoints
-        # Checkpoint directory. Tensorflow assumes this directory already exists so we need to create it
-        self.checkpoint_dir = os.path.abspath(os.path.join(self._log_dir, "checkpoints/"))
-
-        if not os.path.exists(self.checkpoint_dir):
-            os.makedirs(self.checkpoint_dir)
-        self._saver = tf.train.Saver(max_to_keep=1000)  # Save model after each epoch
-
-        self.train_summary_op = tf.summary.merge(self._train_summaries)
-        self.val_summary_op = tf.summary.merge(self._val_summaries)
-
-        print("--------------------------------------------------")
-        print("\ntensorboard --logdir  {}".format(os.path.abspath(self._log_dir)))
-        print("\ntensorboard --logdir  {} --port 6007".format(os.path.abspath(self.checkpoint_dir)))
-        print("--------------------------------------------------")
-
-    def _evaluate_on_validation(self, get_val_instance_generator,
+    def _evaluate_on_validation(self, get_val_feature_generator,
                                 batch_size,
                                 num_val_steps,
                                 session):
         val_batch_gen = DataManager.get_batch_generator(
-            get_val_instance_generator, batch_size)
+            get_val_feature_generator, batch_size)
         # Calculate the mean of the validation metrics
         # over the validation set.
         val_accuracies = []
@@ -247,7 +291,7 @@ class BaseTFModel:
             #     continue
             feed_dict = self._get_validation_feed_dict(val_batch)
             val_batch_acc, val_batch_loss = session.run(
-                [self.accuracy, self.loss],
+                [self.eval_operation, self.loss],
                 feed_dict=feed_dict)
 
             val_accuracies.append(val_batch_acc)
@@ -268,12 +312,18 @@ class BaseTFModel:
                              simple_value=mean_val_accuracy)])
         return mean_val_accuracy, mean_val_loss, val_summary
 
-
     def train(self,
-              get_train_instance_generator, get_val_instance_generator,
-              batch_size, num_train_steps_per_epoch, num_epochs,
-              num_val_steps, val_period=250, log_period=10, save_period=250,
-              max_ckpts_to_keep=10, patience=0):
+              get_train_feature_generator,
+              get_val_feature_generator,
+              batch_size,
+              num_epochs,
+              num_train_steps_per_epoch,
+              num_val_steps,
+              val_period,
+              log_period,
+              save_period,
+              max_ckpts_to_keep=10,
+              patience=0):
         """
         Train the model.
 
@@ -281,7 +331,7 @@ class BaseTFModel:
             This function should return a finite generator that produces
             features for use in training.
 
-        :param get_val_instance_generator: Function returning generator
+        :param get_val_feature_generator: Function returning generator
             This function should return a finite generator that produces
             features for use in validation.
 
@@ -322,10 +372,17 @@ class BaseTFModel:
             The number of epochs with no improvement in validation loss
             after which training will be stopped.
         """
-
-        if self.y_pred is None or self.loss is None or self.accuracy is None or self.training_op is None: #Training optimization
-
-            raise NotImplementedError
+        previous_mode = self._mode
+        self._mode = 'train'
+        if self.predictions is None or \
+                        self.loss is None or \
+                        self.eval_operation is None or \
+                        self.optimizer is None:
+            logger.info(self.predictions)
+            logger.info(self.loss)
+            logger.info(self.predictions)
+            logger.info(self.optimizer)
+            raise RuntimeError('User model missed to link predictions/loss/eval/optimizer operations!')
 
         global_step = 0
         init_op = tf.global_variables_initializer()
@@ -342,7 +399,7 @@ class BaseTFModel:
             for epoch in tqdm(range(num_epochs), desc="Epochs Completed"):
                 # Get a generator of train batches
                 train_batch_gen = DataManager.get_batch_generator(
-                    get_train_instance_generator, batch_size)
+                    get_train_feature_generator, batch_size)
                 # Iterate over the generated batches
                 for train_batch in tqdm(train_batch_gen,
                                         total=num_train_steps_per_epoch,
@@ -351,10 +408,6 @@ class BaseTFModel:
 
                     global_step = sess.run(self.global_step) + 1
 
-                    # inputs, targets = train_batch
-                    # if (len(train_batch) != batch_size):
-                    #     continue
-
                     feed_dict = self._get_train_feed_dict(train_batch)
 
                     # Do a gradient update, and log results to Tensorboard
@@ -362,19 +415,19 @@ class BaseTFModel:
                     if global_step % log_period == 0:
                         # Record summary with gradient update
                         train_loss, _, train_summary = sess.run(
-                            [self.loss, self.training_op, self.train_summary_op],
+                            [self.loss, self.optimizer, self.train_summary_op],
                             feed_dict=feed_dict)
                         self._train_summary_writer.add_summary(train_summary, global_step)
                     else:
                         # Do a gradient update without recording anything.
                         train_loss, _ = sess.run(
-                            [self.loss, self.training_op],
+                            [self.loss, self.optimizer],
                             feed_dict=feed_dict)
 
                     if global_step % val_period == 0:
                         # Evaluate on validation data
                         val_acc, val_loss, val_summary = self._evaluate_on_validation(
-                            get_val_instance_generator=get_val_instance_generator,
+                            get_val_feature_generator=get_val_feature_generator,
                             batch_size=batch_size,
                             num_val_steps=num_val_steps,
                             session=sess)
@@ -387,10 +440,11 @@ class BaseTFModel:
 
                 # End of the epoch, so save the model and check validation loss,
                 # stopping if applicable.
-                ret = self._saver.save(sess, self._save_dir + '/' + self._name, global_step=global_step)
-                logger.info('Saving final model @ ' + os.path.abspath(ret))
+                model_path = self._saver.save(sess, self._save_dir + '/' + self._name, global_step=global_step)
+                logger.info('Saving final model @ ' + os.path.abspath(model_path))
+
                 val_acc, val_loss, val_summary = self._evaluate_on_validation(
-                    get_val_instance_generator=get_val_instance_generator,
+                    get_val_feature_generator=get_val_feature_generator,
                     batch_size=batch_size,
                     num_val_steps=num_val_steps,
                     session=sess)
@@ -420,8 +474,13 @@ class BaseTFModel:
 
         # Done training!
         logger.info("Finished {} epochs!".format(epoch + 1))
+        self._mode = previous_mode
+        return os.path.abspath(model_path)
 
-    def predict(self, get_test_instance_generator, model_load_dir, batch_size,
+    def test(self,
+                get_test_instance_generator,
+                model_load_dir,
+                batch_size,
                 num_test_steps=None):
         """
         Load a serialized model and use it for prediction on a test
@@ -445,6 +504,9 @@ class BaseTFModel:
             is read; inference keeps going until the generator is exhausted. It
             is used to set a total for the progress bar.
         """
+        previous_mode = self._mode
+        self._mode = 'predict'
+
         if num_test_steps is None:
             logger.info("num_test_steps is not set, pass in a value "
                         "to show a progress bar.")
@@ -468,28 +530,36 @@ class BaseTFModel:
                               total=num_test_steps,
                               desc="Test Batches Completed"):
                 feed_dict = self._get_test_feed_dict(batch)
-                y_pred_batch = sess.run(self.y_pred, feed_dict=feed_dict)
+                y_pred_batch = sess.run(self.predictions, feed_dict=feed_dict)
                 y_pred.append(y_pred_batch)
             y_pred_flat = np.concatenate(y_pred, axis=0)
+
+        self._mode = previous_mode
         return y_pred_flat
 
-    def predict_on_single_feature(self, test_feature, model_load_dir):
+    def predict(self, batched_features, model_load_dir=None):
         """
-        Load a serialized model and use it for prediction on a test
-        set (from a finite generator).
+        Load a serialized model and use it for prediction on user custom inputs.
+        
+        Use dataset.custom_input() to generate feature(s) and use datamanager.to_batch()
+        to prepare the data for prediction.
         :param model_load_dir: str
             Path to a directory with serialized tensorflow checkpoints for the
             model to be run. The most recent checkpoint will be loaded and used
             for prediction.
-
-        :param batch_size: int
-            The number of features per batch produced by the generator.
+            Bt default the model will be loaded from ~/.dhira.models/model_name/run_id/
         """
-        # model_load_dir = model_load_dir + '/checkpoint'
+
+        previous_mode = self._mode
+        self._mode = 'predict'
+
+        if model_load_dir is None:
+            model_load_dir = self._save_dir
+            logger.info('Model is lodded from {}'.format(model_load_dir))
 
         if not self._is_graph_build:
             logger.info('Initializing the model for prediction...')
-            self.build_graph()
+            self.compile()
 
         gpu_options = tf.GPUOptions(allow_growth=True)
         sess_config = tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True, log_device_placement=True)
@@ -501,9 +571,8 @@ class BaseTFModel:
             saver.restore(sess, last_checkpoint)
             logger.info("Successfully loaded {}!".format(last_checkpoint))
 
-            y_pred = []
-            feed_dict = self._get_test_feed_dict(test_feature)
-            y_pred = sess.run(self.y_pred, feed_dict=feed_dict)
-            # y_pred.append(y_pred_batch)
-            # y_pred_flat = np.concatenate(y_pred, axis=0)
+            feed_dict = self._get_test_feed_dict(batched_features)
+            y_pred = sess.run(self.predictions, feed_dict=feed_dict)
+
+        self._mode = previous_mode
         return y_pred

@@ -1,12 +1,12 @@
 import logging
 import random
-import spacy
 from itertools import islice
+
 import numpy as np
 
-from dhira.data.features.internal.feature_base import FeatureBase
-from dhira.data.dataset.text import TextDataset
+from dhira.data.dataset.internal.text import TextDataset
 from dhira.data.embedding_manager import EmbeddingManager
+from dhira.data.features.internal.feature_base import FeatureBase
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class DataManager():
                 raise RuntimeError("Need spaCy nlp pipeline. eg: spacy.load('en_core_web_md') ")
             self.dataset.set_nlp_pipelie(self.nlp)
 
+
     @staticmethod
     def to_batch(features):
         """
@@ -36,9 +37,10 @@ class DataManager():
         :return: 
         """
         if not isinstance(features, list):
-            logger.info('features should be a list of `FeatureBase` type')
+            logger.info('converting feature "{}" to list of features'.format(features))
             features = [features]
         if not isinstance(features[0], FeatureBase):
+            logger.info("Found: {}".format(features[0]))
             raise TypeError('features in the list are not of base type `FeatureBase`')
 
         features = [feature.as_training_data() for feature in features]
@@ -54,6 +56,7 @@ class DataManager():
 
     @staticmethod
     def get_random_feature(get_feature_generator, total_num_features):
+        random.seed(None)
         random_pos = random.randint(1, total_num_features)
         feature_generator = get_feature_generator()
         batched_features = list(islice(feature_generator, random_pos, random_pos + 1))
@@ -256,7 +259,7 @@ class DataManager():
         if isinstance(self.dataset, TextDataset):
             self.dataset.index_test_features()
 
-        self.dataset.pickle_val_features()
+        self.dataset.pickle_test_features()
 
         if max_features:
             logger.info("Truncating the training dataset "

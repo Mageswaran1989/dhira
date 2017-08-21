@@ -1,10 +1,9 @@
-from copy import deepcopy
 import logging
-from overrides import overrides
-
 
 import tensorflow as tf
-from dhira.tf.models.base_tf_model import BaseTFModel
+from overrides import overrides
+
+from dhira.tf.models.internal.base_tf_model import BaseTFModel
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class Glove(BaseTFModel):
         self.cooccurrence_count = tf.placeholder(tf.float32, shape=None, name="cooccurrence_count")
 
     @overrides
-    def _build_forward(self):
+    def _compile(self):
         count_max = tf.constant([self.cooccurrence_cap], dtype=tf.float32, name='max_cooccurrence_count')
         scaling_factor = tf.constant([self.scaling_factor], dtype=tf.float32, name="scaling_factor")
 
@@ -91,7 +90,7 @@ class Glove(BaseTFModel):
         self.training_op = tf.train.AdagradOptimizer(self.learning_rate).minimize(self.loss, global_step=self.global_step)
         self.__combined_embeddings = tf.add(focal_embeddings, context_embeddings, name="combined_embeddings")
         self.accuracy = tf.constant(0, name='dummy_accuracy')
-        self.add_scalar_summary(self.loss)
+        self._add_scalar_summary(self.loss)
 
     @overrides
     def _evaluate_model_parameters(self, session):

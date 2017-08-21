@@ -3,7 +3,7 @@ import logging
 from tqdm import tqdm_notebook as tqdm
 
 from dhira.data.dataset.internal.dataset_base import Dataset
-from dhira.data.dataset.text import TextDataset
+from dhira.data.dataset.internal.text import TextDataset
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 

@@ -1,5 +1,4 @@
 import csv
-from copy import deepcopy
 from overrides import overrides
 from dhira.data.features.internal.text_feature import TextFeature
 from dhira.data.features.indexed_feature import IndexedFeature
@@ -38,7 +37,7 @@ class MovieReviewFeature(TextFeature):
         indexed_review_tokens = self._index_text(
             self.review_tokens,
             data_indexer)
-
+        if self.label is not None: self.label = int(self.label)
         return MovieReviewFeatureIndexed(indexed_review_tokens, self.label)
 
 class MovieReviewFeatureIndexed(IndexedFeature):
