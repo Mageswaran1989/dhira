@@ -13,7 +13,10 @@ Following git repo "https://github.com/nelson-liu/paraphrase-id-tensorflow", is 
 - Creates custom Dataset classes and reuses them across models
 - To write custom models from scratch and understand the model from an Enginering perspective
 
-## Papers covered so far...
+Don't forget to check [MiniFlow](exploration/tensorflow/MiniFlow.ipynb), adopted from Udacity Course, that explains how 
+TensorFlow work in abstract manner!
+ 
+## Papers and their implementation...
 
 Created with [tablesgenerator](http://www.tablesgenerator.com/markdown_tables) and validated [here!](http://dillinger.io/)
 
