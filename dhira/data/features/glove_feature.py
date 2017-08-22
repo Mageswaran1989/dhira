@@ -1,6 +1,6 @@
 import numpy as np
 
-from dhira.data.features.internal.feature_base import TextFeature
+from dhira.data.features.internal.text_feature import TextFeature
 
 
 class GloveFeature(TextFeature):

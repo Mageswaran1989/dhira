@@ -78,9 +78,8 @@ class BaseTFModel:
         self.predictions = None
         self.loss = None
         self.eval_operation = None
-
         self.optimizer = None #Training optimization
-        self.gradient_and_variance = None
+        self.gradient_and_variance = None #Optional
 
     def _setup_dir(self):
         """

@@ -4,6 +4,7 @@ from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.normalization import BatchNormalization
 
 #AlexNet with batch normalization in Keras
+#https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf
 #input image is 224x224
 
 model = Sequential()

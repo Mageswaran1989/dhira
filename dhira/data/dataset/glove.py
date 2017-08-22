@@ -16,37 +16,117 @@ class NotFitToCorpusError(Exception):
 class GloveDataset(Dataset):
 
     def __init__(self,
-                 vocabulary_size,
-                 min_occurrences,
-                 left_size,
-                 right_size,
-                 name='default',
-                 feature_type = None,
+                 vocabulary_size = 5000,
+                 min_occurrences = 2,
+                 left_margin_size = 2,
+                 right_margin_size = 2,
+                 name='GloveDataset',
+                 feature_type = GloveFeature,
                  train_files = None,
                  test_files = None,
-                 val_files = None,
-                 pickle_dir=None,
-                 train_features=None,
-                 val_features=None,
-                 test_features=None):
+                 val_files = None):
+        """
+        1. Convert the lines in text file as tokens with NLP.
+        2. Make pairs of  (left_context, word, right_context) for given margin
+        3. Filter words based on their occurrences in the whole corpus
+        4. Make a map of word -> index
+        5. Construct cooccurrence_matrix with (word_index, context_index) : count 
+        :param vocabulary_size: Number of word to be to vectorized
+        :param min_occurrences: Minimum number of occurances for the word to be considered
+        :param left_margin_size: Left Margin Size
+        :param right_margin_size: Right Margin Size
+        :param name: Name of the Model
+        :param feature_type: 
+        :param train_files: Any Text File Eg: Wiki Pages
+        :param test_files: Any Text File Eg: Wiki Pages
+        :param val_files:  Any Text File Eg: Wiki Pages
+        """
 
         super(GloveDataset, self).__init__(name=name,
                                            feature_type=feature_type,
                                            train_files=train_files,
                                            test_files=test_files,
-                                           val_files=val_files,
-                                           pickle_dir=pickle_dir,
-                                           train_features=train_features,
-                                           val_features=val_features,
-                                           test_features=test_features)
+                                           val_files=val_files)
         self.words = None
         self.word_to_id = None
         self.cooccurrence_matrix = None
 
         self.vocabulary_size = vocabulary_size
         self.min_occurrences = min_occurrences
-        self.left_size = left_size
-        self.right_size = right_size
+        self.left_margin_size = left_margin_size
+        self.right_margin_size = right_margin_size
+
+
+    def window(self, tokens, start_index, end_index):
+        """
+        Returns the list of words starting from `start_index`, going to `end_index`
+        taken from tokens. If `start_index` is a negative number, or if `end_index`
+        is greater than the index of the last word in tokens, this function will pad
+        its return value with `NULL_WORD`.
+        """
+        last_index = len(tokens) + 1
+        selected_tokens = tokens[max(start_index, 0):min(end_index, last_index) + 1]
+        return selected_tokens
+
+    def context_windows(self, tokens, left_margin_size, right_margin_size):
+        """
+        
+        :param tokens: List of tokens
+        :param left_margin_size: 
+        :param right_margin_size: 
+        :return: 
+        """
+        for i, word in enumerate(tokens):
+            start_index = i - left_margin_size
+            end_index = i + right_margin_size
+            left_context = self.window(tokens, start_index, i - 1)
+            right_context = self.window(tokens, i + 1, end_index)
+            yield (left_context, word, right_context)
+
+    def fit_to_corpus(self, lines):
+        word_counts = Counter()
+        cooccurrence_counts = defaultdict(float)
+
+        # Page Number: 2
+        #Let this be X
+        # X_ij tabulates number of times word j (word[1]) occurs in context of word i (word[0])
+        #Let X_i = Sum of X_ik for all k,  be the number of times any word appears in the context of word i.
+        #Probability P_ij = P(j|i) = X_ij/X_i be the probability that word j appear in the context of word i.
+
+        #Page Number: 3
+        #The above argument suggests that the appropriate
+        # starting point for word vector learning should
+        # be with ratios of co-occurrence probabilities rather
+        # than the probabilities themselves. Noting that the
+        # ratio Pik /Pjk depends on three words i, j, and k,
+        # the most general model takes the form,....
+
+        # Let X_i = Sum of X_ik for all k,  be the number of times any word appears in the context of word i.
+        #Probability P_ik = P(k|i) = X_ik/X_i be the probability that word k appear in the context of word i.
+
+        # Let X_j = Sum of X_jk for all k,  be the number of times any word appears in the context of word j.
+        #Probability P_jk = P(k|j) = X_jk/X_j be the probability that word k appear in the context of word j.
+        for tokens in tqdm(lines):
+            word_counts.update(tokens)
+            for left_context, word_k, right_context in self.context_windows(tokens, self.left_margin_size, self.right_margin_size):
+                # add (1 / distance from focal word) for this pair
+                for i, context_word_i in enumerate(left_context[::-1]):
+                    cooccurrence_counts[(word_k, context_word_i)] += 1 / (i + 1) # 1 is added since index is from 0
+                for j, context_word_j in enumerate(right_context):
+                    cooccurrence_counts[(word_k, context_word_j)] += 1 / (j + 1)
+
+        if len(cooccurrence_counts) == 0:
+            raise ValueError("No coccurrences in lines. Did you try to reuse a generator?")
+
+        self.words = [word for word, count in word_counts.most_common(self.vocabulary_size)
+                        if count >= self.min_occurrences]
+        self.word_to_id = {word: i for i, word in enumerate(self.words)}
+
+
+        self.cooccurrence_matrix = {
+            (self.word_to_id[words[0]], self.word_to_id[words[1]]): count
+            for words, count in cooccurrence_counts.items()
+            if words[0] in self.word_to_id and words[1] in self.word_to_id}
 
     def read_from_file(self, file_names):
         """
@@ -104,14 +184,11 @@ class GloveDataset(Dataset):
 
         # features = [feature_class.read_from_line(line) for line in tqdm(lines)]
 
-        logger.info("Fitting the corpus to get Coocurrance Matrix")
+        logger.info("Fitting the lines to get Coocurrance Matrix")
 
         lines = [nltk.wordpunct_tokenize(line.lower()) for line in tqdm(lines)]
 
         self.fit_to_corpus(lines)
-
-        # cooccurrences = [(word_ids[0], word_ids[1], count)
-        #                  for word_ids, count in self.cooccurrence_matrix.items()]
 
         logger.info('Extracting the features...')
         features = []
@@ -120,57 +197,9 @@ class GloveDataset(Dataset):
             j_indices = word_ids[1]
             feature = GloveFeature(i_indices, j_indices, counts)
             features.append(feature)
+        print(features[:10])
 
         return features
-
-
-    def window(self, region, start_index, end_index):
-        """
-        Returns the list of words starting from `start_index`, going to `end_index`
-        taken from region. If `start_index` is a negative number, or if `end_index`
-        is greater than the index of the last word in region, this function will pad
-        its return value with `NULL_WORD`.
-        """
-        last_index = len(region) + 1
-        selected_tokens = region[max(start_index, 0):min(end_index, last_index) + 1]
-        return selected_tokens
-
-    def context_windows(self, region, left_size, right_size):
-        for i, word in enumerate(region):
-            start_index = i - left_size
-            end_index = i + right_size
-            left_context = self.window(region, start_index, i - 1)
-            right_context = self.window(region, i + 1, end_index)
-            yield (left_context, word, right_context)
-
-    def fit_to_corpus(self, corpus):
-
-        # self.vocabulary_size, self.min_occurrences,
-        # self.left_size, self.right_size
-
-        word_counts = Counter()
-        cooccurrence_counts = defaultdict(float)
-        for region in tqdm(corpus):
-            word_counts.update(region)
-            for l_context, word, r_context in self.context_windows(region, self.left_size, self.right_size):
-                for i, context_word in enumerate(l_context[::-1]):
-                    # add (1 / distance from focal word) for this pair
-                    cooccurrence_counts[(word, context_word)] += 1 / (i + 1)
-                for i, context_word in enumerate(r_context):
-                    cooccurrence_counts[(word, context_word)] += 1 / (i + 1)
-
-        if len(cooccurrence_counts) == 0:
-            raise ValueError("No coccurrences in corpus. Did you try to reuse a generator?")
-
-        self.words = [word for word, count in word_counts.most_common(self.vocabulary_size)
-                        if count >= self.min_occurrences]
-        self.word_to_id = {word: i for i, word in enumerate(self.words)}
-
-        self.cooccurrence_matrix = {
-            (self.word_to_id[words[0]], self.word_to_id[words[1]]): count
-            for words, count in cooccurrence_counts.items()
-            if words[0] in self.word_to_id and words[1] in self.word_to_id}
-
 
     def load_train_features(self):
         self.train_features = self.read_from_file(self.train_files)
@@ -180,3 +209,10 @@ class GloveDataset(Dataset):
 
     def load_test_features(self):
         raise NotImplementedError
+
+    def embedding_for(self, word_str_or_id, embeddings):
+        if isinstance(word_str_or_id, str):
+            return embeddings[self.word_to_id[word_str_or_id]]
+        elif isinstance(word_str_or_id, int):
+            return embeddings[word_str_or_id]
+    # TODO https://github.com/shashankg7/glove-tensorflow/blob/master/glove/utils.py
