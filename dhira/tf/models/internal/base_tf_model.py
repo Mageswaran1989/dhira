@@ -10,9 +10,9 @@ from tensorflow.contrib.tensorboard.plugins import projector
 from tqdm import tqdm_notebook as tqdm
 
 from dhira.data.data_manager import DataManager
+from dhira.data.openai.cartpole import CartPole as GymEnv
 
 logger = logging.getLogger(__name__)
-
 
 class BaseTFModel:
     """
@@ -64,8 +64,8 @@ class BaseTFModel:
 
         self._run_id = str(run_id)
 
-        if save_dir is None: save_dir = os.path.expanduser(os.path.join('~', '.dhira', 'models'))
-        if log_dir is None:  log_dir = os.path.expanduser(os.path.join('~', '.dhira', 'logs'))
+        if save_dir is None: save_dir = os.path.expanduser(os.path.join('~', 'dhira', 'models'))
+        if log_dir is None:  log_dir = os.path.expanduser(os.path.join('~', 'dhira', 'logs'))
         self._save_dir = os.path.join(save_dir, self._name, self._run_id.zfill(2) + '/')
         self._log_dir = os.path.join(log_dir, self._name, self._run_id.zfill(2) + timestamp + '/')
 
@@ -75,11 +75,102 @@ class BaseTFModel:
 
         # Following variables needs to be implemented/linked by the user model definition
         # Use self.global_step in optimization for better logging
-        self.predictions = None
-        self.loss = None
-        self.eval_operation = None
-        self.optimizer = None #Training optimization
-        self.gradient_and_variance = None #Optional
+        self._prediction_op = None
+        self._loss_op = None
+        self._eval_metric_op = None
+        self._optimizer_op = None #Training optimization
+        self._gradient_and_variance = None #Optional
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # User model definitions should go here
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def _create_placeholders(self):
+        """
+        Method for user model to plugin their TF placeholder(s) creation
+        :return: None
+        """
+        raise NotImplementedError
+
+    def _setup_graph_def(self):
+        """
+        Method that builds/compiles the model i.e where TF graph definitions are created
+        :return: None
+        """
+        raise NotImplementedError
+
+    def _get_loss(self):
+        """
+        Returns model specific loss function
+        :return: Model Loss Function
+        """
+        raise NotImplementedError
+
+    def _get_eval_metric(self):
+        """
+        Returns model specific evaluation metric Tensor Op
+        :return: Model Evaluation Metric Function
+        """
+        raise NotImplementedError
+
+    def _get_optimizer(self):
+        """
+        Returns model specific Optimizer Op
+        :return: Model Loss Function
+        """
+        raise NotImplementedError
+    
+    def _evaluate_model_parameters(self, session):
+        """
+        Override this method to evaluate model specific parameters.
+        Eg. result = session.run(some_operation) 
+        """
+        logger.info('There are no model specific operation evaluation!')
+        
+    def _get_prediction(self):
+        """
+        Returns model specific prediction Tensor Op here
+        :return: Model Prediction Function
+        """
+        raise NotImplementedError
+
+    def _get_train_feed_dict(self, batch):
+        """
+        Given a train batch from a batch generator,
+        return the appropriate feed_dict to pass to the
+        model during training.
+
+        :param batch: tuple of NumPy arrays
+            A tuple of NumPy arrays containing the data necessary
+            to train.
+        """
+        raise NotImplementedError
+
+    def _get_validation_feed_dict(self, batch):
+        """
+        Given a validation batch from a batch generator,
+        return the appropriate feed_dict to pass to the
+        model during validation.
+
+        :param batch: tuple of NumPy arrays
+            A tuple of NumPy arrays containing the data necessary
+            to validate.
+        """
+        raise NotImplementedError
+
+    def _get_test_feed_dict(self, batch):
+        """
+        Given a test batch from a batch generator,
+        return the appropriate feed_dict to pass to the
+        model during prediction.
+
+        :param batch: tuple of NumPy arrays
+            A tuple of NumPy arrays containing the data necessary
+            to predict.
+        """
+        raise NotImplementedError
+
+    # -----------------------------------------------------------------------------------------------------------------
 
     def _setup_dir(self):
         """
@@ -185,26 +276,41 @@ class BaseTFModel:
         print("\ntensorboard --logdir  {} --port 6007".format(os.path.abspath(self.checkpoint_dir)))
         print("--------------------------------------------------")
 
-    def _create_placeholders(self):
-        """
-        Method for user model to plugin their TF placeholder(s) creation
-        :return: None
-        """
-        raise NotImplementedError
-
-    def _compile(self):
-        """
-        Method that builds/compiles the model i.e where TF graph definitions are created
-        :return: None
-        """
-        raise NotImplementedError
-
-    def _evaluate_model_parameters(self, session):
-        """
-        Override this method to evaluate model specific parameters.
-        Eg. result = session.run(some_operation) 
-        """
-        logger.warning('There are no model specific operation evaluation!')
+    @property
+    def loss(self):
+        if self._loss_op is None:
+            # Get from the user model
+            self._loss_op = self._get_loss()
+            if self._loss_op is None:
+                raise RuntimeError("User Model needs to link its loss operation")
+        return self._loss_op
+    
+    @property
+    def eval_metric(self):
+        if self._eval_metric_op is None:
+            # Get from the user model
+            self._eval_metric_op = self._get_eval_metric()
+            if self._eval_metric_op is None:
+                raise RuntimeError("User Model needs to link its evaluation metric operation")
+        return self._eval_metric_op
+    
+    @property
+    def optimizer(self):
+        if self._optimizer_op is None:
+            # Get from the user model
+            self._optimizer_op = self._get_optimizer()
+            if self._optimizer_op is None:
+                raise RuntimeError("User Model needs to link its optimizer operation")
+        return self._optimizer_op
+    
+    @property
+    def prediction(self):
+        if self._prediction_op is None:
+            # Get from the user model
+            self._prediction_op = self._get_prediction()
+            if self._prediction_op is None:
+                raise RuntimeError("User Model needs to link its prediction operation")
+        return self._prediction_op
 
     def compile(self, seed=42):
         """
@@ -217,8 +323,7 @@ class BaseTFModel:
              The graph-level seed to use when building the graph.
         """
         ops.reset_default_graph()
-        self._is_graph_build = True
-        self._log_params() #Small trick to get all the variables and log them
+        self._log_params() # Small trick to get all the variables and log them
         # Create the graph object
         with tf.device("/gpu:0"):
             logger.info("Building graph...")
@@ -229,46 +334,13 @@ class BaseTFModel:
                                                initializer=tf.constant_initializer(0),
                                                trainable=False)
             self._create_placeholders()
-            self._compile()
+            self._setup_graph_def()
 
             self._add_scalar_summary(self.loss)
-            self._add_scalar_summary(self.eval_operation)
+            if self.eval_metric is not None:
+                self._add_scalar_summary(self.eval_metric)
+        self._is_graph_build = True
 
-    def _get_train_feed_dict(self, batch):
-        """
-        Given a train batch from a batch generator,
-        return the appropriate feed_dict to pass to the
-        model during training.
-
-        :param batch: tuple of NumPy arrays
-            A tuple of NumPy arrays containing the data necessary
-            to train.
-        """
-        raise NotImplementedError
-
-    def _get_validation_feed_dict(self, batch):
-        """
-        Given a validation batch from a batch generator,
-        return the appropriate feed_dict to pass to the
-        model during validation.
-
-        :param batch: tuple of NumPy arrays
-            A tuple of NumPy arrays containing the data necessary
-            to validate.
-        """
-        raise NotImplementedError
-
-    def _get_test_feed_dict(self, batch):
-        """
-        Given a test batch from a batch generator,
-        return the appropriate feed_dict to pass to the
-        model during prediction.
-
-        :param batch: tuple of NumPy arrays
-            A tuple of NumPy arrays containing the data necessary
-            to predict.
-        """
-        raise NotImplementedError
 
     def _evaluate_on_validation(self, get_val_feature_generator,
                                 batch_size,
@@ -290,7 +362,7 @@ class BaseTFModel:
             #     continue
             feed_dict = self._get_validation_feed_dict(val_batch)
             val_batch_acc, val_batch_loss = session.run(
-                [self.eval_operation, self.loss],
+                [self.eval_metric, self.loss],
                 feed_dict=feed_dict)
 
             val_accuracies.append(val_batch_acc)
@@ -373,16 +445,6 @@ class BaseTFModel:
         """
         previous_mode = self._mode
         self._mode = 'train'
-        if self.predictions is None or \
-                        self.loss is None or \
-                        self.eval_operation is None or \
-                        self.optimizer is None:
-            logger.info(self.predictions)
-            logger.info(self.loss)
-            logger.info(self.predictions)
-            logger.info(self.optimizer)
-            raise RuntimeError('User model missed to link predictions/loss/eval/optimizer operations!')
-
         global_step = 0
         init_op = tf.global_variables_initializer()
 
@@ -529,7 +591,7 @@ class BaseTFModel:
                               total=num_test_steps,
                               desc="Test Batches Completed"):
                 feed_dict = self._get_test_feed_dict(batch)
-                y_pred_batch = sess.run(self.predictions, feed_dict=feed_dict)
+                y_pred_batch = sess.run(self.prediction, feed_dict=feed_dict)
                 y_pred.append(y_pred_batch)
             y_pred_flat = np.concatenate(y_pred, axis=0)
 
@@ -571,7 +633,75 @@ class BaseTFModel:
             logger.info("Successfully loaded {}!".format(last_checkpoint))
 
             feed_dict = self._get_test_feed_dict(batched_features)
-            y_pred = sess.run(self.predictions, feed_dict=feed_dict)
+            y_pred = sess.run(self.prediction, feed_dict=feed_dict)
 
         self._mode = previous_mode
         return y_pred
+
+    def train_gym(self,
+              gym_env: GymEnv,
+              batch_size=5,
+              num_episodes=100000,
+              expected_reward=200
+              ):
+
+        reward_sum = 0
+        running_reward = None
+        features = []
+        batched_features = None
+
+        gym_env.reset()
+        previous_mode = self._mode
+        self._mode = 'train'
+
+        global_step = 0
+        init_op = tf.global_variables_initializer()
+
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        sess_config = tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True, log_device_placement=True)
+        with tf.Session(config=sess_config) as sess:
+            sess.run(init_op)
+
+            # self._setup_summaries(sess=sess)
+            feature = gym_env.reset_get_initial_observation()
+
+            for episode_number in tqdm(range(1, num_episodes+1), desc="Episodes completed"):
+                global_step = sess.run(self.global_step) + 1
+
+                i = 0
+                while(gym_env.is_done is False):
+
+                    batched_features = DataManager.to_batch(feature)
+                    model_prediction = sess.run(self.prediction,
+                                                feed_dict=self._get_train_feed_dict(batched_features, gym_env.is_done))
+
+                    feature = gym_env.next_action(model_prediction)
+                    features.append(feature)
+
+                    reward_sum += gym_env.reward
+                    gym_env.render()
+                    i += 1
+
+                if episode_number % batch_size == 0:
+                    batched_features = DataManager.to_batch(features)
+                    loss = sess.run([self.optimizer],
+                             feed_dict=self._get_train_feed_dict(batched_features, gym_env.is_done))
+
+                    running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
+                    print('Episode:%d Average reward for episode:%f  Total average reward:%f' %
+                              (episode_number,
+                               reward_sum/batch_size,
+                               running_reward/batch_size))
+
+                    if reward_sum / batch_size > 200:
+                        print("Task solved in", episode_number, 'episodes')
+                        break
+
+                    features = []
+                    reward_sum = 0
+                    running_reward = None
+
+                feature = gym_env.reset_get_initial_observation()
+
+        gym_env.close()
+        self._mode = previous_mode

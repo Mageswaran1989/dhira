@@ -131,7 +131,7 @@ class SiameseMatchingBiLSTM(BaseTFModel):
         # A boolean that encodes whether we are training or evaluating
         self.is_train = tf.placeholder('bool', [], name='is_train')
 
-    def _compile(self):
+    def _setup_graph_def(self):
         """
         Using the config passed to the SiameseMatchingBiLSTM object on
         creation, build the forward pass of the computation graph.

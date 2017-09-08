@@ -1,0 +1,4 @@
+http://greenteapress.com/wp/think-stats-2e/
+http://online.stanford.edu/course/probability-and-statistics-self-paced
+https://elitedatascience.com/learn-statistics-for-data-science
+https://www.quora.com/How-do-I-learn-statistics-and-probability-for-machine-learning-2

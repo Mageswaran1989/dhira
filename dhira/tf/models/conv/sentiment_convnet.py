@@ -68,7 +68,7 @@ class SentimentCNN(BaseTFModel):
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
     @overrides
-    def _compile(self):
+    def _setup_graph_def(self):
         # Keeping track of l2 regularization loss (optional)
         l2_loss = tf.constant(0.0)
 

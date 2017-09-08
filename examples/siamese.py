@@ -109,7 +109,7 @@ model = SiameseBiLSTM(mode='train',
 # In[ ]:
 
 
-model.build_graph()
+model._build_graph()
 
 
 # In[ ]:

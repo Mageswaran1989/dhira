@@ -1,0 +1,7 @@
+numpy
+scikit
+scipy
+tensorflow
+keras
+scikit-image
+cpickle

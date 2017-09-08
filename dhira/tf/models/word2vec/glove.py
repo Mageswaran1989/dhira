@@ -52,7 +52,7 @@ class Glove(BaseTFModel):
         self.cooccurrence_count = tf.placeholder(tf.float32, shape=None, name="cooccurrence_count")
 
     @overrides
-    def _compile(self):
+    def _setup_graph_def(self):
         count_max = tf.constant([self.cooccurrence_cap], dtype=tf.float32, name='max_cooccurrence_count')
         scaling_factor = tf.constant([self.scaling_factor], dtype=tf.float32, name="scaling_factor")
 

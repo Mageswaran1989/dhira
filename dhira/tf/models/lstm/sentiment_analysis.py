@@ -96,7 +96,7 @@ class LSTMSentimentAnalysis(BaseTFModel):
         self.is_train = tf.placeholder('bool', [], name='is_train')
 
     @overrides
-    def _compile(self):
+    def _setup_graph_def(self):
 
         #Create a Tensorflow Embedding Matrix for lookup
         with tf.variable_scope("embeddings"), tf.device('/cpu:0'):

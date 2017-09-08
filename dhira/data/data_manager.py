@@ -1,4 +1,4 @@
-import logging
+
 import random
 from itertools import islice
 
@@ -7,7 +7,7 @@ import numpy as np
 from dhira.data.dataset.internal.text import TextDataset
 from dhira.data.embedding_manager import EmbeddingManager
 from dhira.data.features.internal.feature_base import FeatureBase
-
+import logging
 logger = logging.getLogger(__name__)
 
 class DataManager():
@@ -36,10 +36,10 @@ class DataManager():
         :param features: List of features 
         :return: 
         """
-        if not isinstance(features, list):
+        if isinstance(features, list) is not True:
             logger.info('converting feature "{}" to list of features'.format(features))
             features = [features]
-        if not isinstance(features[0], FeatureBase):
+        if isinstance(features[0], FeatureBase) is not True:
             logger.info("Found: {}".format(features[0]))
             raise TypeError('features in the list are not of base type `FeatureBase`')
 

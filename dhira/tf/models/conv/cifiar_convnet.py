@@ -259,7 +259,7 @@ class Cifiar10ConvNet(BaseTFModel):
         return layer
 
     @overrides
-    def _compile(self):
+    def _setup_graph_def(self):
         # Model
         logits = self.conv_net(self.in_images, self.keep_prop)
 

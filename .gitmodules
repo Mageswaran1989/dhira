@@ -34,3 +34,7 @@
 	path = exploration/tensorflow/deep-learning
 	url = https://github.com/udacity/deep-learning
 	branch = master
+[submodule "exploration/tensorflow/TensorFlow-Tutorials"]
+	path = exploration/tensorflow/TensorFlow-Tutorials
+	url = https://github.com/Hvass-Labs/TensorFlow-Tutorials
+	branch = master

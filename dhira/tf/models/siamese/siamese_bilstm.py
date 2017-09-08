@@ -90,6 +90,64 @@ class SiameseBiLSTM(BaseTFModel):
         self.rnn_output_mode = rnn_output_mode
         self.output_keep_prob = output_keep_prob
 
+        self._loss = None
+        self._predictions = None
+        self._optimizer = None
+        self._accuracy = None
+
+
+    def _l1_similarity(self, sentence_one, sentence_two):
+        """
+        Given a pair of encoded sentences (vectors), return a probability
+        distribution on whether they are duplicates are not with:
+        exp(-||sentence_one - sentence_two||)
+
+        :param sentence_one: Tensor
+            A tensor of shape (batch_size, 2*rnn_hidden_size) representing
+            the encoded sentence_ones to use in the probability calculation.
+
+        :param sentence_one: Tensor
+            A tensor of shape (batch_size, 2*rnn_hidden_size) representing
+            the encoded sentence_twos to use in the probability calculation.
+
+        :returns class_probabilities: Tensor
+            A tensor of shape (batch_size, 2), represnting the probability
+            that a pair of sentences are duplicates as
+            [is_not_duplicate, is_duplicate].
+        """
+        with tf.name_scope("l1_similarity"):
+            # Take the L1 norm of the two vectors.
+            # Shape: (batch_size, 2*rnn_hidden_size)
+            l1_distance = tf.abs(sentence_one - sentence_two)
+
+            # Take the sum for each sentence pair
+            # Shape: (batch_size, 1)
+            summed_l1_distance = tf.reduce_sum(l1_distance, axis=1,
+                                               keep_dims=True)
+
+            # Exponentiate the negative summed L1 distance to get the
+            # positive-class probability.
+            # Shape: (batch_size, 1)
+            positive_class_probs = tf.exp(-summed_l1_distance)
+
+            # Get the negative class probabilities by subtracting
+            # the positive class probabilities from 1.
+            # Shape: (batch_size, 1)
+            negative_class_probs = 1 - positive_class_probs
+
+            # Concatenate the positive and negative class probabilities
+            # Shape: (batch_size, 2)
+            class_probabilities = tf.concat([negative_class_probs,
+                                             positive_class_probs], 1)
+
+            # if class_probabilities has 0's, then taking the log of it
+            # (e.g. for cross-entropy loss) will cause NaNs. So we add
+            # epsilon and renormalize by the sum of the vector.
+            safe_class_probabilities = class_probabilities + 1e-08
+            safe_class_probabilities /= tf.reduce_sum(safe_class_probabilities,
+                                                      axis=1,
+                                                      keep_dims=True)
+            return safe_class_probabilities
 
     @overrides
     def _create_placeholders(self):
@@ -120,7 +178,7 @@ class SiameseBiLSTM(BaseTFModel):
         self.is_train = tf.placeholder('bool', [], name='is_train')
 
     @overrides
-    def _compile(self):
+    def _setup_graph_def(self):
         """
         Using the values in the config passed to the SiameseBiLSTM object
         on creation, build the forward pass of the computation graph.
@@ -268,44 +326,73 @@ class SiameseBiLSTM(BaseTFModel):
             # between the two encoded sentences to get an output
             # distribution over labels.
             # Shape: (batch_size, 2)
-            self.predictions = self._l1_similarity(encoded_sentence_one,
+            self._predictions = self._l1_similarity(encoded_sentence_one,
                                                    encoded_sentence_two)
             # Manually calculating cross-entropy, since we output
             # probabilities and can't use softmax_cross_entropy_with_logits
             # Add epsilon to the probabilities in order to prevent log(0)
-            self.loss = tf.reduce_mean(
+            self._loss = tf.reduce_mean(
                 -tf.reduce_sum(tf.cast(self.y_true, "float") *
-                               tf.log(self.predictions),
+                               tf.log(self._predictions),
                                axis=1))
 
         with tf.name_scope("accuracy"):
             # Get the correct predictions.
             # Shape: (batch_size,) of bool
             correct_predictions = tf.equal(
-                tf.argmax(self.predictions, 1),
+                tf.argmax(self._predictions, 1),
                 tf.argmax(self.y_true, 1))
 
             # Cast to float, and take the mean to get accuracy
-            self.eval_operation = tf.reduce_mean(tf.cast(correct_predictions,
+            self._accuracy = tf.reduce_mean(tf.cast(correct_predictions,
                                                    "float"))
 
         with tf.name_scope("train"):
             optimizer = tf.train.AdamOptimizer()
             with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-                self.gradient_and_variance = optimizer.compute_gradients(self.loss)
-                self.optimizer = optimizer.apply_gradients(self.gradient_and_variance,
+                self.gradient_and_variance = optimizer.compute_gradients(self._loss)
+                self._optimizer = optimizer.apply_gradients(self.gradient_and_variance,
                                                            global_step=self.global_step)
 
-        # with tf.name_scope("train_summaries"):
-            # Add the loss and the accuracy to the tensorboard summary
-            # tf.summary.scalar("loss", self.loss)
-            # tf.summary.scalar("accuracy", self.accuracy)
-            # self.summary_op = tf.summary.merge_all()
+    @overrides
+    def _get_loss(self):
+        """
+        Returns model specific loss function
+        :return: Model Loss Function
+        """
+        return self._loss
 
+    @overrides
+    def _get_eval_metric(self):
+        """
+        Returns model specific evaluation metric Tensor Op
+        :return: Model Evaluation Metric Function
+        """
+        return self._accuracy
+
+    @overrides
+    def _get_optimizer(self):
+        """
+        Returns model specific Optimizer Op
+        :return: Model Loss Function
+        """
+        return self._optimizer
 
     @overrides
     def _evaluate_model_parameters(self, session):
-        logger.info("No model specific evaluations")
+        """
+        Override this method to evaluate model specific parameters.
+        Eg. result = session.run(some_operation) 
+        """
+        logger.info('There are no model specific operation evaluation!')
+
+    @overrides
+    def _get_prediction(self):
+        """
+        Returns model specific prediction Tensor Op here
+        :return: Model Prediction Operaiton
+        """
+        return self._predictions
 
     @overrides
     def _get_train_feed_dict(self, batch):
@@ -332,56 +419,3 @@ class SiameseBiLSTM(BaseTFModel):
                      self.sentence_two: inputs[1],
                      self.is_train: False}
         return feed_dict
-
-    def _l1_similarity(self, sentence_one, sentence_two):
-        """
-        Given a pair of encoded sentences (vectors), return a probability
-        distribution on whether they are duplicates are not with:
-        exp(-||sentence_one - sentence_two||)
-
-        :param sentence_one: Tensor
-            A tensor of shape (batch_size, 2*rnn_hidden_size) representing
-            the encoded sentence_ones to use in the probability calculation.
-
-        :param sentence_one: Tensor
-            A tensor of shape (batch_size, 2*rnn_hidden_size) representing
-            the encoded sentence_twos to use in the probability calculation.
-
-        :returns class_probabilities: Tensor
-            A tensor of shape (batch_size, 2), represnting the probability
-            that a pair of sentences are duplicates as
-            [is_not_duplicate, is_duplicate].
-        """
-        with tf.name_scope("l1_similarity"):
-            # Take the L1 norm of the two vectors.
-            # Shape: (batch_size, 2*rnn_hidden_size)
-            l1_distance = tf.abs(sentence_one - sentence_two)
-
-            # Take the sum for each sentence pair
-            # Shape: (batch_size, 1)
-            summed_l1_distance = tf.reduce_sum(l1_distance, axis=1,
-                                               keep_dims=True)
-
-            # Exponentiate the negative summed L1 distance to get the
-            # positive-class probability.
-            # Shape: (batch_size, 1)
-            positive_class_probs = tf.exp(-summed_l1_distance)
-
-            # Get the negative class probabilities by subtracting
-            # the positive class probabilities from 1.
-            # Shape: (batch_size, 1)
-            negative_class_probs = 1 - positive_class_probs
-
-            # Concatenate the positive and negative class probabilities
-            # Shape: (batch_size, 2)
-            class_probabilities = tf.concat([negative_class_probs,
-                                             positive_class_probs], 1)
-
-            # if class_probabilities has 0's, then taking the log of it
-            # (e.g. for cross-entropy loss) will cause NaNs. So we add
-            # epsilon and renormalize by the sum of the vector.
-            safe_class_probabilities = class_probabilities + 1e-08
-            safe_class_probabilities /= tf.reduce_sum(safe_class_probabilities,
-                                                      axis=1,
-                                                      keep_dims=True)
-            return safe_class_probabilities
