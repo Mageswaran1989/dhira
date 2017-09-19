@@ -38,3 +38,7 @@
 	path = exploration/tensorflow/TensorFlow-Tutorials
 	url = https://github.com/Hvass-Labs/TensorFlow-Tutorials
 	branch = master
+[submodule "exploration/rl/reinforcement-learning"]
+	path = exploration/rl/reinforcement-learning
+	url = https://github.com/dennybritz/reinforcement-learning
+	branch = master
